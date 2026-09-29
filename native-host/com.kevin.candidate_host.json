@@ -1,0 +1,9 @@
+{
+  "name": "com.kevin.candidate_host",
+  "description": "Application Tracker local candidate host",
+  "path": "C:\\Users\\Honey\\Documents\\dev\\ApplicationTracker\\native-host\\_run_host.bat",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://onjfongodcjpnlgefbkgkcgbmcfhobpj/"
+  ]
+}

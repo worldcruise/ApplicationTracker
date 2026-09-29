@@ -6,8 +6,8 @@ Application Tracker manages several candidate profiles for the existing Chrome j
 
 ## What's new
 
-- A candidate list with **Edit** and **Set active** actions.
-- Separate history folder, prompt template, and installed Chrome extension ID for each candidate.
+- A candidate list with **Edit**, **Delete**, and **Active** actions.
+- Separate history folder, prompt, and installed Chrome extension ID for each candidate. A prompt can be pasted or linked to a UTF-8 `.txt` or `.md` file.
 - A guided configuration window with a history-folder test.
 - One shared native host that registers the configured extension IDs and reads the active candidate from a central configuration file.
 - The host builds and saves the prompt from the active candidate's template; the extension copies that same returned prompt.
@@ -76,9 +76,9 @@ The native-host manifest is generated when you save the first candidate. Keep th
    ```
 
    The manager prints its local address and opens it in your browser. Leave this terminal open while using the management page.
-3. Select **Add candidate**. Enter a name, the actual extension ID, a full history-folder path, and the candidate's complete prompt template. Select **Test folder**, then **Save candidate**.
+3. Select **Add candidate**. Enter a name and the actual extension ID. Paste the candidate's prompt text, or select **Use a .txt or .md file** and choose its path with **Browse**. Enter or browse to a history folder, select **Test folder**, then **Save candidate**.
 4. Saving runs `native-host/register_host.py`. It writes the native-host manifest and registers it for your Windows user. The page reports any registration error.
-5. Select **Set active** next to the candidate. The active candidate appears at the top of the page.
+5. Select the candidate's **Active** radio button, or check **Set this candidate active after saving**. The active candidate appears at the top of the page.
 6. On a job page, highlight the company name and use the extension's right-click action or `Ctrl+Shift+F`. The extension checks the active history folder, saves the job, and copies the saved prompt.
 
 You may close the manager after setting the active candidate. Chrome starts the native host when the extension sends a message; the management page does not need to remain open for a capture. Reopen it with `py -3 manager\app.py` to change settings.
@@ -100,7 +100,9 @@ If a matching company folder already exists, the extension displays **Already sa
 
 The old `candidate-host/config.json` is **not automatically imported** by the files supplied so far. To reuse an existing candidate, enter the existing `candidate_root` path as that candidate's history folder, paste the desired prompt template into the manager, and enter the installed extension's ID. This does not move or delete the existing company folders.
 
-Each candidate must have a distinct extension ID and history-folder path. The prompt templates are stored separately under `config/templates/`. Editing a candidate's history path changes where future captures are saved; it does not move old folders.
+Each candidate must have a distinct extension ID and history-folder path. Pasted prompts are stored separately under `config/templates/`. A linked prompt file is read from its original path for each capture, so keep the file there. Editing a candidate's history path changes where future captures are saved; it does not move old folders.
+
+**Delete** removes a candidate profile and its stored pasted prompt after confirmation. Saved application folders and linked prompt files stay on disk. If the deleted candidate was active, select another candidate before capturing jobs. Deleting the last profile removes this app's native-host registration.
 
 ## Troubleshooting
 

@@ -75,12 +75,28 @@ def sync_registration(candidates: list[dict]) -> dict:
     """
     Update the host manifest and register its location for this Windows user.
 
-    Called by manager/app.py after adding or editing a candidate.
+    Called by manager/app.py after changing a candidate.
     """
     if sys.platform != "win32":
         raise RuntimeError(
             "Automatic native-host registration is available on Windows."
         )
+
+    if not candidates:
+        import winreg
+
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, REGISTRY_KEY) as key:
+                registered_path, _ = winreg.QueryValueEx(key, "")
+        except FileNotFoundError:
+            registered_path = None
+
+        if registered_path and os.path.normcase(registered_path) == os.path.normcase(
+            str(MANIFEST_FILE.resolve())
+        ):
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, REGISTRY_KEY)
+
+        return {"manifestPath": None, "extensionIds": []}
 
     if not RUNNER_FILE.is_file():
         raise FileNotFoundError(
@@ -172,9 +188,12 @@ def main() -> int:
         print(f"Registration failed: {error}")
         return 1
 
-    print(f"Registered {HOST_NAME}")
-    print(f"Manifest: {result['manifestPath']}")
-    print(f"Allowed candidate extensions: {len(result['extensionIds'])}")
+    if result["extensionIds"]:
+        print(f"Registered {HOST_NAME}")
+        print(f"Manifest: {result['manifestPath']}")
+        print(f"Allowed candidate extensions: {len(result['extensionIds'])}")
+    else:
+        print(f"Unregistered {HOST_NAME}; no candidates remain.")
     return 0
 
 

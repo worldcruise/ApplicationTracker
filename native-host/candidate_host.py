@@ -147,6 +147,17 @@ def candidate_root(candidate: dict[str, Any]) -> Path:
 
 
 def candidate_template(candidate: dict[str, Any]) -> str:
+    if candidate.get("promptFilePath"):
+        prompt_path = Path(candidate["promptFilePath"]).expanduser()
+        if not prompt_path.is_absolute():
+            raise ValueError("The candidate prompt file path must be absolute.")
+        if prompt_path.suffix.lower() not in {".txt", ".md"} or not prompt_path.is_file():
+            raise ValueError("The candidate prompt file is missing or is not .txt or .md.")
+        prompt_text = prompt_path.read_text(encoding="utf-8").strip()
+        if not prompt_text:
+            raise ValueError("The candidate prompt file is empty.")
+        return prompt_text
+
     relative_path = Path(candidate["promptTemplate"])
     template_path = (CONFIG_DIR / relative_path).resolve()
     allowed_dir = TEMPLATE_DIR.resolve()

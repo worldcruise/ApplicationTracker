@@ -112,6 +112,72 @@ def check_history_folder(value: str) -> tuple[Path, bool]:
     return folder, False
 
 
+def check_prompt_file(value: str) -> Path:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("Choose a prompt .txt or .md file.")
+
+    prompt_file = Path(value.strip()).expanduser()
+    if not prompt_file.is_absolute():
+        raise ValueError("Use a full, absolute prompt-file path.")
+
+    prompt_file = prompt_file.resolve()
+    if prompt_file.suffix.lower() not in {".txt", ".md"} or not prompt_file.is_file():
+        raise ValueError("Choose an existing .txt or .md prompt file.")
+
+    if prompt_file.stat().st_size > MAX_REQUEST_BYTES:
+        raise ValueError("The prompt file must be smaller than 500 KB.")
+
+    try:
+        prompt_text = prompt_file.read_text(encoding="utf-8")
+    except UnicodeError as error:
+        raise ValueError("The prompt file must be UTF-8 text.") from error
+    except OSError as error:
+        raise ValueError(f"The prompt file could not be read: {error}") from error
+
+    if not prompt_text.strip():
+        raise ValueError("The prompt file is empty.")
+
+    return prompt_file
+
+
+def browse_path(kind: str, current_path: str) -> str:
+    if kind not in {"folder", "prompt"}:
+        raise ValueError("Invalid browse type.")
+
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except ImportError as error:
+        raise ValueError("File browsing requires Tkinter. Enter the full path instead.") from error
+
+    try:
+        root = tk.Tk()
+    except tk.TclError as error:
+        raise ValueError("Could not open the file browser. Enter the full path instead.") from error
+    root.withdraw()
+    root.attributes("-topmost", True)
+    try:
+        current = Path(current_path).expanduser() if current_path else Path.home()
+        initial_dir = current if current.is_dir() else current.parent
+        if not initial_dir.is_dir():
+            initial_dir = Path.home()
+
+        if kind == "folder":
+            selected = filedialog.askdirectory(
+                parent=root, title="Choose candidate history folder",
+                initialdir=str(initial_dir), mustexist=True,
+            )
+        else:
+            selected = filedialog.askopenfilename(
+                parent=root, title="Choose candidate prompt file",
+                initialdir=str(initial_dir),
+                filetypes=[("Prompt files", "*.txt *.md"), ("All files", "*.*")],
+            )
+        return str(Path(selected).resolve()) if selected else ""
+    finally:
+        root.destroy()
+
+
 def sync_host_registration() -> dict:
     try:
         result = subprocess.run(
@@ -141,6 +207,7 @@ def save_candidate(payload: dict, candidate_id: str | None = None) -> dict:
     name = str(payload.get("name") or "").strip()
     extension_id = str(payload.get("extensionId") or "").strip().lower()
     template_text = payload.get("promptTemplateText")
+    prompt_file_value = payload.get("promptFilePath")
 
     if not name or len(name) > 100:
         raise ValueError("Candidate name must be 1–100 characters.")
@@ -148,8 +215,12 @@ def save_candidate(payload: dict, candidate_id: str | None = None) -> dict:
     if not EXTENSION_ID_PATTERN.fullmatch(extension_id):
         raise ValueError("Enter the installed extension's 32-character ID.")
 
-    if not isinstance(template_text, str) or not template_text.strip():
-        raise ValueError("Enter a prompt template.")
+    if prompt_file_value:
+        prompt_file = check_prompt_file(prompt_file_value)
+    else:
+        prompt_file = None
+        if not isinstance(template_text, str) or not template_text.strip():
+            raise ValueError("Paste the candidate's prompt text or choose a prompt file.")
 
     folder, _ = check_history_folder(payload.get("historyFolder"))
     state = load_state()
@@ -177,15 +248,19 @@ def save_candidate(payload: dict, candidate_id: str | None = None) -> dict:
         pass
 
     template_name = f"{candidate_id}.txt"
-    write_text_atomic(TEMPLATE_DIR / template_name, template_text)
+    if prompt_file is None:
+        write_text_atomic(TEMPLATE_DIR / template_name, template_text)
 
     candidate = {
         "id": candidate_id,
         "name": name,
         "historyFolder": str(folder),
         "extensionId": extension_id,
-        "promptTemplate": f"templates/{template_name}",
     }
+    if prompt_file is None:
+        candidate["promptTemplate"] = f"templates/{template_name}"
+    else:
+        candidate["promptFilePath"] = str(prompt_file)
 
     existing_index = next(
         (
@@ -208,6 +283,32 @@ def save_candidate(payload: dict, candidate_id: str | None = None) -> dict:
         "candidate": candidate,
         "registration": registration,
         "state": state,
+    }
+
+
+def delete_candidate(candidate_id: str) -> dict:
+    state = load_state()
+    find_candidate(state, candidate_id)
+    state["candidates"] = [
+        candidate for candidate in state["candidates"]
+        if candidate["id"] != candidate_id
+    ]
+    if state.get("activeCandidateId") == candidate_id:
+        state["activeCandidateId"] = None
+
+    save_state(state)
+
+    cleanup_warning = None
+    if re.fullmatch(r"[0-9a-f]{32}", candidate_id):
+        try:
+            (TEMPLATE_DIR / f"{candidate_id}.txt").unlink(missing_ok=True)
+        except OSError as error:
+            cleanup_warning = f"Saved prompt cleanup needs attention: {error}"
+
+    return {
+        "state": state,
+        "registration": sync_host_registration(),
+        "cleanupWarning": cleanup_warning,
     }
 
 
@@ -330,6 +431,9 @@ class TrackerHandler(BaseHTTPRequestHandler):
     def do_PUT(self) -> None:
         self.handle_write("PUT")
 
+    def do_DELETE(self) -> None:
+        self.handle_write("DELETE")
+
     def handle_write(self, method: str) -> None:
         if not self.check_local_request(write=True):
             return
@@ -338,6 +442,14 @@ class TrackerHandler(BaseHTTPRequestHandler):
 
         try:
             payload = self.read_json()
+
+            if method == "POST" and path == "/api/browse":
+                current_path = payload.get("currentPath", "")
+                if not isinstance(current_path, str):
+                    raise ValueError("Invalid starting path.")
+                selected = browse_path(payload.get("kind"), current_path)
+                self.send_json(200, {"path": selected})
+                return
 
             with WRITE_LOCK:
                 if method == "POST" and path == "/api/folders/check":
@@ -357,6 +469,12 @@ class TrackerHandler(BaseHTTPRequestHandler):
                 ):
                     candidate_id = path.rsplit("/", 1)[1]
                     response = save_candidate(payload, candidate_id)
+
+                elif method == "DELETE" and re.fullmatch(
+                    r"/api/candidates/[^/]+", path
+                ):
+                    candidate_id = path.rsplit("/", 1)[1]
+                    response = delete_candidate(candidate_id)
 
                 elif method == "POST" and path == "/api/active":
                     candidate_id = payload.get("candidateId")

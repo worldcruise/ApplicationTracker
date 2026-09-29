@@ -1,5 +1,13 @@
 {
   "schemaVersion": 1,
-  "activeCandidateId": null,
-  "candidates": []
+  "activeCandidateId": "b085447984204bdf9c9b94e9d389d7df",
+  "candidates": [
+    {
+      "id": "b085447984204bdf9c9b94e9d389d7df",
+      "name": "Jacob Payne",
+      "historyFolder": "C:\\Users\\Honey\\Music\\Jacob\\History",
+      "extensionId": "onjfongodcjpnlgefbkgkcgbmcfhobpj",
+      "promptFilePath": "C:\\Users\\Honey\\Music\\Jacob\\extensionV2\\candidate-extension\\prompt-template - CS.txt"
+    }
+  ]
 }
