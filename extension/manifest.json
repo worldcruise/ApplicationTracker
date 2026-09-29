@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Application Tracker",
+  "version": "0.4.0",
+  "description": "Capture job postings for the active candidate in Application Tracker.",
+  "permissions": [
+    "contextMenus",
+    "scripting",
+    "nativeMessaging",
+    "pageCapture",
+    "offscreen",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "check-selected-company": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+F"
+      },
+      "description": "Check and save a job for the active candidate"
+    }
+  }
+}

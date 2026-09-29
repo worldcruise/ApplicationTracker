@@ -1,0 +1,1 @@
+py -3 manager\app.py

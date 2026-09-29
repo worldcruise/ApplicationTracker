@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Application Tracker</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">AT</span>
+      <span>Application Tracker</span>
+    </div>
+    <div id="active-summary" class="active-summary">
+      No active candidate
+    </div>
+  </header>
+
+  <main class="page">
+    <div class="page-heading">
+      <div>
+        <p class="eyebrow">SETTINGS</p>
+        <h1>Candidate profiles</h1>
+        <p class="subtitle">
+          Manage each candidate’s extension ID, history folder, and prompt
+          template. Choose one candidate to use for new captures.
+        </p>
+      </div>
+      <button id="add-candidate" class="button primary" type="button">
+        + Add candidate
+      </button>
+    </div>
+
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden>
+    </div>
+
+    <div class="columns">
+      <section class="panel candidates-panel" aria-labelledby="candidates-title">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">WORKSPACE</p>
+            <h2 id="candidates-title">
+              Candidates <span id="candidate-count" class="count">0</span>
+            </h2>
+          </div>
+          <button id="refresh" class="button subtle" type="button">
+            Refresh
+          </button>
+        </div>
+
+        <div id="candidate-list" class="candidate-list"></div>
+
+        <div id="empty-state" class="empty-state" hidden>
+          <div class="empty-icon">+</div>
+          <h3>No candidates yet</h3>
+          <p>Add your first candidate to connect an extension and a history folder.</p>
+          <button id="empty-add" class="button primary" type="button">
+            Add candidate
+          </button>
+        </div>
+      </section>
+
+      <aside class="panel setup-panel" aria-labelledby="setup-title">
+        <p class="eyebrow">GUIDED SETUP</p>
+        <h2 id="setup-title">How setup works</h2>
+
+        <ol class="setup-steps">
+          <li>
+            <span class="step-number">1</span>
+            <div>
+              <strong>Find the extension ID</strong>
+              <p>
+                Open Chrome’s extensions page, turn on Developer mode, and copy
+                the ID of the candidate’s installed extension.
+              </p>
+            </div>
+          </li>
+          <li>
+            <span class="step-number">2</span>
+            <div>
+              <strong>Choose a history folder</strong>
+              <p>
+                Enter its full local path. Use <b>Test folder</b> in the
+                candidate window before saving.
+              </p>
+            </div>
+          </li>
+          <li>
+            <span class="step-number">3</span>
+            <div>
+              <strong>Add the prompt template</strong>
+              <p>
+                Paste the candidate’s complete prompt template. It is stored
+                separately from the other candidates’ templates.
+              </p>
+            </div>
+          </li>
+          <li>
+            <span class="step-number">4</span>
+            <div>
+              <strong>Set the candidate active</strong>
+              <p>
+                The active candidate’s folder and template are used when the
+                extension captures a job.
+              </p>
+            </div>
+          </li>
+        </ol>
+
+        <div class="host-box">
+          <span class="host-label">SHARED NATIVE HOST</span>
+          <code>com.kevin.candidate_host</code>
+          <p id="registration-note">
+            Saving a candidate registers its extension ID with the local host.
+            Run a capture afterward to verify the Chrome connection.
+          </p>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <dialog id="candidate-dialog" aria-labelledby="dialog-title">
+    <div class="dialog-heading">
+      <div>
+        <p class="eyebrow">CANDIDATE CONFIGURATION</p>
+        <h2 id="dialog-title">Add candidate</h2>
+      </div>
+      <button
+        id="close-dialog"
+        class="icon-button close-button"
+        type="button"
+        aria-label="Close candidate window"
+      >×</button>
+    </div>
+
+    <form id="candidate-form">
+      <label for="candidate-name">Candidate name</label>
+      <input
+        id="candidate-name"
+        name="name"
+        type="text"
+        maxlength="100"
+        placeholder="e.g. Eric Wang"
+        autocomplete="off"
+        required
+      >
+
+      <label for="extension-id">Chrome extension ID</label>
+      <input
+        id="extension-id"
+        name="extensionId"
+        type="text"
+        minlength="32"
+        maxlength="32"
+        pattern="[a-pA-P]{32}"
+        placeholder="32-character ID from Chrome"
+        autocomplete="off"
+        spellcheck="false"
+        required
+      >
+      <p class="field-help">
+        Chrome assigns this ID. Paste the actual ID of the installed extension.
+      </p>
+
+      <label for="history-folder">History folder</label>
+      <div class="folder-field">
+        <input
+          id="history-folder"
+          name="historyFolder"
+          type="text"
+          placeholder="C:\Users\You\Documents\Applications\Eric"
+          autocomplete="off"
+          spellcheck="false"
+          required
+        >
+        <button id="test-folder" class="button secondary" type="button">
+          Test folder
+        </button>
+      </div>
+      <p id="folder-result" class="field-result" role="status" aria-live="polite">
+      </p>
+      <p class="field-help">
+        Use a full path. If the folder does not exist, it will be created
+        when you save. Editing this path does not move old files.
+      </p>
+
+      <fieldset class="template-options">
+        <legend>Prompt template</legend>
+
+        <div class="template-choices">
+          <label>
+            <input
+              id="template-choice-file"
+              type="radio"
+              name="template-method"
+              value="file"
+              checked
+            >
+            Choose file <span class="recommended">Preferred</span>
+          </label>
+
+          <label>
+            <input
+              type="radio"
+              name="template-method"
+              value="paste"
+            >
+            Paste text
+          </label>
+        </div>
+
+        <div id="template-file-panel" class="template-panel">
+          <label for="template-file">Choose a .txt or .md file</label>
+          <input
+            id="template-file"
+            type="file"
+            accept=".txt,.md,text/plain,text/markdown"
+          >
+          <p id="template-result" class="field-result" role="status"></p>
+        </div>
+
+        <div id="template-paste-panel" class="template-panel" hidden>
+          <label for="prompt-template">Paste the complete template</label>
+          <textarea
+            id="prompt-template"
+            name="promptTemplateText"
+            rows="12"
+            spellcheck="false"
+          ></textarea>
+        </div>
+      </fieldset>
+
+      <p id="form-error" class="field-result error" role="alert"></p>
+
+      <div class="dialog-actions">
+        <button id="cancel-dialog" class="button subtle" type="button">
+          Cancel
+        </button>
+        <button id="save-candidate" class="button primary" type="submit">
+          Save candidate
+        </button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>
