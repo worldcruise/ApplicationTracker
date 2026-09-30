@@ -110,16 +110,45 @@ def caller_extension_id(arguments: list[str]) -> str:
     return match.group(1)
 
 
-def verify_caller(state: dict[str, Any], extension_id: str) -> None:
-    permitted_ids = {
-        item.get("extensionId")
-        for item in state.get("candidates", [])
-    }
-
-    if extension_id not in permitted_ids:
+def verify_caller(
+    state: dict[str, Any], extension_id: str, message: dict[str, Any]
+) -> None:
+    candidates = [
+        item for item in state.get("candidates", [])
+        if item.get("extensionId") == extension_id
+    ]
+    if not candidates:
         raise PermissionError(
             "This extension ID is not configured in Application Tracker."
         )
+
+    if message.get("action") in {"check_company", "save_application"}:
+        entered_name = str(message.get("candidateName") or "").strip()
+        if not entered_name:
+            raise ValueError("Enter the candidate name in the extension popup.")
+        matches = [
+            item for item in candidates
+            if entered_name.casefold() == str(item.get("name") or "").strip().casefold()
+        ]
+        if not matches:
+            raise PermissionError(
+                "The candidate name does not match this extension ID."
+            )
+        if len(matches) > 1:
+            raise ValueError(
+                "More than one candidate has this name and extension ID. "
+                "Rename one in Application Tracker."
+            )
+        candidate = matches[0]
+    else:
+        active_id = state.get("activeCandidateId")
+        candidate = next(
+            (item for item in candidates if item.get("id") == active_id),
+            None,
+        )
+
+    if candidate is None or candidate.get("id") != state.get("activeCandidateId"):
+        raise PermissionError("This candidate is not active.")
 
 
 def active_candidate(state: dict[str, Any]) -> dict[str, Any]:
@@ -295,13 +324,6 @@ def handle_save_application(
 
     candidate = active_candidate(state)
 
-    if message.get("expectedCandidateId") != candidate["id"]:
-        raise ValueError(
-            "The active candidate changed while the job was being captured. "
-            "Run the extension again so the job is checked and saved "
-            "under the same candidate."
-        )
-
     root = candidate_root(candidate)
 
     job_title = str(message.get("jobTitle") or "").strip()
@@ -326,18 +348,10 @@ def handle_save_application(
         root, company_name
     )
 
-    if job_description:
-        write_text(
-            folder / "job_description.txt",
-            job_description,
-        )
-
     if mhtml_bytes is not None:
         (folder / "job_description.mhtml").write_bytes(
             mhtml_bytes
         )
-
-    write_text(folder / "resume_prompt.txt", final_prompt)
 
     old_meta = {}
     meta_path = folder / "meta.json"
@@ -372,15 +386,12 @@ def handle_save_application(
         "savedAtUtc": utc_now_iso(),
         "createdFolderThisRun": created,
         "files": {
-            "text": (
-                "job_description.txt"
-                if job_description else None
-            ),
+            "text": None,
             "mhtml": (
                 "job_description.mhtml"
                 if mhtml_bytes is not None else None
             ),
-            "prompt": "resume_prompt.txt",
+            "prompt": None,
         },
         "snapshotId": f"{timestamp}_{snapshot_hash}",
     }
@@ -396,7 +407,7 @@ def handle_save_application(
         "candidateName": candidate["name"],
         "createdFolder": created,
         "folderPath": str(folder),
-        "promptPath": str(folder / "resume_prompt.txt"),
+        "promptPath": None,
         "savedFiles": meta["files"],
         "finalPrompt": final_prompt,
     }
@@ -421,7 +432,7 @@ def main() -> int:
 
             try:
                 state = load_state()
-                verify_caller(state, extension_id)
+                verify_caller(state, extension_id, message)
 
                 action = message.get("action")
                 handler = HANDLERS.get(action)

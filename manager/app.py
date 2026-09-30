@@ -234,8 +234,13 @@ def save_candidate(payload: dict, candidate_id: str | None = None) -> dict:
         if other["id"] == candidate_id:
             continue
 
-        if other["extensionId"] == extension_id:
-            raise ValueError("This extension ID belongs to another candidate.")
+        if (
+            other["extensionId"] == extension_id
+            and other["name"].strip().casefold() == name.casefold()
+        ):
+            raise ValueError(
+                "This candidate name is already used for this extension ID."
+            )
 
         other_folder = Path(other["historyFolder"]).expanduser().resolve()
         if os.path.normcase(str(other_folder)) == os.path.normcase(str(folder)):

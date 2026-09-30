@@ -1,15 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Application Tracker",
-  "version": "0.4.0",
-  "description": "Capture job postings for the active candidate in Application Tracker.",
+  "version": "0.5.0",
+  "description": "Archive a company page and copy the active candidate's prompt.",
   "permissions": [
     "contextMenus",
     "scripting",
     "nativeMessaging",
     "pageCapture",
-    "offscreen",
-    "clipboardWrite"
+    "clipboardWrite",
+    "storage"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -17,12 +17,16 @@
   "background": {
     "service_worker": "background.js"
   },
+  "action": {
+    "default_title": "Application Tracker candidate",
+    "default_popup": "popup.html"
+  },
   "commands": {
     "check-selected-company": {
       "suggested_key": {
         "default": "Ctrl+Shift+F"
       },
-      "description": "Check and save a job for the active candidate"
+      "description": "Check and save the selected company for the active candidate"
     }
   }
 }

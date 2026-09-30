@@ -1,6 +1,6 @@
 In this chat I am generating my resume. Nothing in this chat MUST affect any other chats.
 
-I am a U.S. citizen living in Houston, TX.
+I am a U.S. citizen living in St. Petersburg.
 When I send a job description DO THE FOLLOWING THINGS AND Just output the resume results, not the analysis process, (IN ONE separate triple-backtick code block):
 
  1. Apply stop condition, if any stop condition meets, stop the process, display only 'NO' and the reason.
@@ -31,8 +31,8 @@ Relocation required
 Work authorization mismatch (U.S. citizenship)
 
 2. Generate a scenario for the role that they really want
-Experience 1 (Honeywell – Charlotte, North Carolina ) where I act as a senior role
-Experience 2 (National Instruments - Austin, Texas ) where I act as an intermediate to senior role
+Experience 1 (Honeywell – Remote ) where I act as a senior role
+Experience 2 (L3-Harris – Melbourne, FL) where I act as an intermediate to senior role
 
 3. Resume Sections(SHOW ONLY THIS)
 After extraction and scenario, generate the resume in these sections:
@@ -64,23 +64,23 @@ with 8 year's of experience
 • Count of Category <= 10
 XXX: xxx, xxx, xxx
 YYY: yyy, yyy, yyy
->>>Job title for Experience 1 (Honeywell - Charlotte, North Carolina | Jan 2019 - Present)
+>>>Job title for Experience 1 (Honeywell - Remote | Jan 2020 - Present)
 All output must remain inside the same single code panel.
->>>Experience 1 (Honeywell - Charlotte, North Carolina )
+>>>Experience 1 (Honeywell - Remote )
 MUST 24+ lines
 Break Each lines
 Focus on WHAT, HOW, WHY, IMPACT (metrics where possible).
 Use max 3 technologies per line, with what extracted from the job description.
->>>Job title for Experience 2 (National Instruments - Austin, Texas | Jun  2018 - Dec 2018)
+>>>Job title for Experience 2 (L3-Harris – Melbourne, FL | Jun  2019 - Dec 2019)
 All output must remain inside the same single code panel.
 Don't show the term "Intermediate"
->>>Experience 2 (National Instruments (NI) - Austin, Texas)
+>>>Experience 2 (L3-Harris – Melbourne, FL)
 MUST 12+ lines
 Break Each lines
 Focus on WHAT, HOW, WHY, IMPACT (metrics where possible).
 Use max 3 technologies per line, with what extracted from the job description.
 >>>Education
-Bachelor of Science in [Field of Study], Colorado School of Mines | Aug 2015 – May 2018
+Bachelor of Science in [Field of Study], University of North Florida | Aug 2015 – May 2019
 Choose one of the most appropriate tech field in Computer Science, Electrical Engineering, Mechanical Engineering and Civil Engineering
 Don't change this content
 >>>Salary Output
@@ -175,7 +175,7 @@ And Generate resume with above content in below style in a one code panel.
 <BODY>Frameworks: Playwright (Python), UiPath Studio, Event-Driven Workflows
 
 <SECTION>EXPERIENCE
-<COMPANY>Honeywell - Charlotte, North Carolina | Jan 2019 - Present
+<COMPANY>Honeywell - Remote | Jan 2020 - Present
 <TITLE>Senior Data Science Manager
 <BULLET>Led a team of data scientists in enhancing predictive analytics capabilities for a large-scale insurance platform, improving operational accuracy by 25%.
 <BULLET>Developed and implemented causal inference models using Bayesian A/B testing, optimizing the accuracy of benefits pricing, and reducing insurance claim errors by 30%.
@@ -194,7 +194,7 @@ And Generate resume with above content in below style in a one code panel.
 <BULLET>Worked closely with the healthcare team to integrate new models for benefits pricing, increasing claims processing efficiency by 25%.
 <BULLET>Applied deep data science expertise to continuously identify data gaps and areas of improvement, successfully closing a 10% gap in insurance claim accuracy.
 
-<COMPANY>National Instruments - Austin, Texas | Jun  2018 - Dec 2018
+<COMPANY>L3-Harris – Melbourne, FL | Jun  2019 - Dec 2019
 <TITLE>Data Science Manager
 <BULLET>Led the modernization of a legacy insurance platform by integrating machine learning-based predictive models for claims adjudication and benefits pricing, improving the platform’s efficiency by 30%.
 <BULLET>Implemented a new data modeling strategy using event-driven patterns, streamlining data workflows and reducing operational delays by 20%.
@@ -210,7 +210,7 @@ And Generate resume with above content in below style in a one code panel.
 <BULLET>Provided actionable insights to senior leadership, directly influencing strategic decisions and driving the growth of the insurance platform.
 <BULLET>Mentored junior data scientists and fostered a collaborative environment that emphasized technical excellence and data-driven decision-making.
 <SECTION>EDUCATION
-<SCHOOL>Bachelor of Science in Computer Science, University of Utah | Aug 2013 – May 2017
+<SCHOOL>Bachelor of Science in Computer Science, University of North Florida | Aug 2015 – May 2019
 
 ----------------
 YOU MUST GENERATE IN THIS STYLE, DON'T MISS EVEN ONE TAG LIKE <SECTION>, <COMPANY>, ONLY CHANGE CONTENT

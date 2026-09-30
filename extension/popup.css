@@ -1,0 +1,15 @@
+:root { font: 13px system-ui, sans-serif; color: #17233a; }
+* { box-sizing: border-box; }
+body { width: 300px; margin: 0; background: #fff; }
+main { padding: 18px; }
+h1 { margin: 0 0 8px; font-size: 17px; }
+p { margin: 0 0 15px; color: #586980; line-height: 1.45; }
+form { display: grid; gap: 8px; }
+label { font-weight: 700; }
+input { width: 100%; padding: 9px 10px; border: 1px solid #cbd7e5; border-radius: 7px; font: inherit; }
+button { justify-self: start; margin-top: 3px; padding: 9px 13px; border: 0; border-radius: 7px; color: #fff; background: #3569dc; font: inherit; font-weight: 700; cursor: pointer; }
+button:hover { background: #285ac8; }
+input:focus-visible, button:focus-visible { outline: 3px solid #9ab7ff; outline-offset: 2px; }
+#status { min-height: 18px; margin: 12px 0 0; color: #187153; }
+#status.error { color: #a43d45; }
+.hint { margin: 10px 0 0; font-size: 12px; }

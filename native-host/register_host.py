@@ -41,12 +41,7 @@ def extension_ids_from(candidates: list[dict]) -> list[str]:
     if not ids:
         raise ValueError("Add a candidate before registering the host.")
 
-    if len(ids) != len(set(ids)):
-        raise ValueError(
-            "Each candidate must have a different extension ID."
-        )
-
-    return sorted(ids)
+    return sorted(set(ids))
 
 
 def write_json_atomic(path: Path, data: dict) -> None:
