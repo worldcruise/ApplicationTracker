@@ -259,7 +259,8 @@ async function showPageMessage(tabId, message, type = "error") {
         const toast = document.createElement("div");
         toast.id = "__application_tracker_toast__";
         toast.setAttribute("role", kind === "error" ? "alert" : "status");
-        const accent = kind === "success" ? "#4adea8" : "#ff9b94";
+        const accent = kind === "success" ? "#4adea8" :
+          kind === "error" ? "#ff9b94" : "#d2e3fc";
         const background = kind === "success" ? "#0f9d58" :
           kind === "error" ? "#d93025" : "#1a73e8";
         Object.assign(toast.style, {
@@ -268,7 +269,7 @@ async function showPageMessage(tabId, message, type = "error") {
           right: "24px",
           zIndex: "2147483647",
           boxSizing: "border-box",
-          width: "340px",
+          width: "400px",
           maxWidth: "calc(100vw - 48px)",
           maxHeight: "40vh",
           overflowY: "auto",
@@ -297,9 +298,9 @@ async function showPageMessage(tabId, message, type = "error") {
           display: "grid",
           placeItems: "center",
           borderRadius: "50%",
-          background: kind === "success" ? "rgba(74, 222, 168, 0.17)" : "rgba(255, 155, 148, 0.17)",
-          color: accent,
-          fontSize: "15px",
+          background: "#ffffff",
+          color: background,
+          fontSize: "16px",
           fontWeight: "800"
         });
 
@@ -323,8 +324,24 @@ async function showPageMessage(tabId, message, type = "error") {
         close.addEventListener("click", () => toast.remove());
 
         const body = document.createElement("div");
-        body.textContent = text;
         body.style.paddingTop = "2px";
+        body.style.minWidth = "0";
+        const firstLineBreak = text.indexOf("\n");
+        const title = document.createElement("strong");
+        title.textContent = firstLineBreak === -1 ? text : text.slice(0, firstLineBreak);
+        Object.assign(title.style, {
+          display: "block",
+          fontSize: "16px",
+          lineHeight: "1.3",
+          fontWeight: "700"
+        });
+        body.appendChild(title);
+        if (firstLineBreak !== -1) {
+          const details = document.createElement("div");
+          details.textContent = text.slice(firstLineBreak + 1);
+          details.style.marginTop = "4px";
+          body.appendChild(details);
+        }
 
         const timerTrack = document.createElement("div");
         timerTrack.setAttribute("aria-hidden", "true");
