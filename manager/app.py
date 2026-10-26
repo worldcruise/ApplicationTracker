@@ -24,6 +24,9 @@ from tracker_config import CandidateRegistryRepository, atomic_write_text
 from tracker_config.models import RevisionConflict
 from tracker_config.repositories import ConfigurationRepositories
 from tracker_config.web_studio import WebStudio, legacy_prompt
+from tracker_config.auth import AuthError, AuthService
+from tracker_config.security import SecurityRepository
+from manager import auth_http
 
 
 CONFIG_FILE = ROOT / "config" / "candidates.json"
@@ -342,6 +345,22 @@ def delete_candidate(candidate_id: str) -> dict:
 
 
 class TrackerHandler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        if auth_http.is_auth_request(getattr(self, "path", "")) or b"/api/auth" in getattr(self, "raw_requestline", b""):
+            # BaseHTTPRequestHandler normally logs the full request target.
+            # Even rejected credential-bearing URLs must never reach logs.
+            super().log_message("Authentication request processed.")
+        else:
+            super().log_message(format, *args)
+
+    def send_error(self, code, message=None, explain=None):
+        if auth_http.is_auth_request(getattr(self, "path", "")):
+            status = 405 if code == 501 else code
+            auth_http.send_error(self, AuthError(status, "method-not-allowed" if status == 405 else "invalid-request", "Authentication request rejected."),
+                                 allow=auth_http.ROUTES.get(urlsplit(self.path).path) if status == 405 else None)
+        else:
+            super().send_error(code, message, explain)
+
     def send_json(self, status: int, data: dict) -> None:
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -367,23 +386,27 @@ class TrackerHandler(BaseHTTPRequestHandler):
 
         return data
 
-    def check_local_request(self, write: bool = False) -> bool:
+    def check_local_request(self, write: bool = False, *, auth: bool = False) -> bool:
         expected_host = f"127.0.0.1:{self.server.server_port}"
 
-        if self.headers.get("Host") != expected_host:
-            self.send_json(403, {"error": "Invalid host."})
+        def deny(message, code):
+            if auth:
+                auth_http.send_error(self, AuthError(403, code, message))
+            else:
+                self.send_json(403, {"error": message})
             return False
+
+        if self.headers.get("Host") != expected_host:
+            return deny("Invalid host.", "invalid-host")
 
         if write:
             expected_origin = f"http://{expected_host}"
 
             if self.headers.get("Origin") != expected_origin:
-                self.send_json(403, {"error": "Invalid origin."})
-                return False
+                return deny("Invalid origin.", "invalid-origin")
 
             if self.headers.get("X-Tracker-Token") != SESSION_TOKEN:
-                self.send_json(403, {"error": "Invalid session token."})
-                return False
+                return deny("Invalid session token.", "invalid-csrf")
 
         return True
 
@@ -399,6 +422,8 @@ class TrackerHandler(BaseHTTPRequestHandler):
             self.send_json(500, {"error": "The request could not be completed."})
 
     def do_GET(self) -> None:
+        if auth_http.handle_request(self, "GET", SESSION_TOKEN):
+            return
         if not self.check_local_request():
             return
 
@@ -497,6 +522,8 @@ class TrackerHandler(BaseHTTPRequestHandler):
         return False
 
     def do_HEAD(self) -> None:
+        if auth_http.handle_request(self, getattr(self, "command", "HEAD"), SESSION_TOKEN):
+            return
         if self.check_local_request() and not self.reject_shared_method(urlsplit(self.path).path):
             self.send_error(501)
 
@@ -504,6 +531,8 @@ class TrackerHandler(BaseHTTPRequestHandler):
     do_PATCH = do_HEAD
 
     def handle_write(self, method: str) -> None:
+        if auth_http.handle_request(self, method, SESSION_TOKEN):
+            return
         if not self.check_local_request(write=True):
             return
 
@@ -598,6 +627,7 @@ class TrackerHandler(BaseHTTPRequestHandler):
 
 def main() -> None:
     server = ThreadingHTTPServer(("127.0.0.1", 0), TrackerHandler)
+    server.auth_service = AuthService(SecurityRepository(CONFIG_FILE.parent))
     url = f"http://127.0.0.1:{server.server_port}/"
 
     print(f"Application Tracker: {url}")

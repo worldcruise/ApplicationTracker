@@ -2,8 +2,9 @@
 
 UI-C1 supplies local owner storage, password verification and administrative
 commands only. **It does not enable login or protect the manager's HTTP APIs.**
-Sessions belong to UI-C2; authorization of all existing sensitive manager routes,
-Host/Origin/CSRF integration and the fixed loopback port belong to UI-C3.
+UI-C2 now implements backend login and in-memory sessions; see
+[authentication.md](authentication.md). Authorization of all existing sensitive
+manager routes, the frontend login gate and fixed loopback port belong to UI-C3.
 No public account-registration or password-reset endpoint exists.
 
 No real owner account was initialized during development. Candidate configuration,
@@ -105,8 +106,8 @@ a replacement account. Recovery artifacts require deliberate operator review and
 are never consumed as an alternative source of credentials.
 
 Both reset and recovery rotate `authEpoch` and increment `authGeneration`. UI-C2
-must compare these against the current store on every session verification so
-reset invalidates old sessions. **There are no live sessions to revoke in UI-C1.**
+compares these against the current store on every session verification so reset
+invalidates old sessions. UI-C1 itself creates no sessions.
 No command silently re-enables a disabled owner or restores an old password.
 
 ## Permissions, writes and concurrency
@@ -190,7 +191,7 @@ injected hidden inputs and its echo-warning refusal.
 Owner storage does not secure the Native Messaging path. Its candidate-name,
 extension-ID and active-candidate checks are legacy compatibility checks, not owner
 authentication. Clipboard-only hotkey and separate context-menu behavior remain
-unchanged. No browser pairing, candidate binding, extension login, login throttling,
-session storage, logout, HTTP security transition or remote-computer transport is
-implemented here. Those require the next approved checkpoints. Real Chrome
-verification remains pending independently of these storage tests.
+unchanged. UI-C2 adds login throttling, process-local sessions and logout. Browser
+pairing, candidate binding, extension login, the manager authorization transition
+and remote-computer transport remain deferred. Real Chrome verification remains
+pending independently of these storage and HTTP tests.

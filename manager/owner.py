@@ -75,7 +75,7 @@ def main(argv=None):
                                           expected_backup_revision=snapshot.backup_revision)
             else:
                 repository.reset_password(username, password, expected_revision=snapshot.revision)
-            print("Owner credentials updated; authentication epoch/generation rotated. Identity was preserved. Live sessions are not implemented until UI-C2.")
+            print("Owner credentials updated; authentication epoch/generation rotated. Identity was preserved. Existing sessions will fail their next verification.")
         return 0
     except (ConfigurationError, OSError) as error:
         print(f"Owner operation refused: {error}", file=sys.stderr)

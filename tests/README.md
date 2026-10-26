@@ -296,3 +296,28 @@ To run only security checks:
 
 See [owner-security.md](../docs/owner-security.md) for schema, safe synthetic
 interactive commands, permissions and the UI-C2/UI-C3 authorization boundary.
+
+## UI-C2B backend authentication
+
+Verified baseline: **217 Python tests and 153 JavaScript tests pass**. The 49 new
+authentication cases comprise **25 service tests and 24 real HTTP tests**.
+
+`test_auth.py` tests the transport-independent session service; `test_auth_http.py`
+uses actual disposable loopback HTTP servers and the production TrackerHandler,
+with private temporary owner fixtures from `auth_fixtures.py`. No manager startup,
+Chrome, native registration or real candidate file is used. HTTP fixtures compare
+their candidate-registry bytes after requests to detect unintended writes.
+
+Coverage includes real PBKDF2 login, generic failures, bounded rate/hash/session
+limits, opaque digest storage, exact idle/absolute expiration, explicit renewal,
+logout/reset/recovery/restart revocation, in-flight reset races, strict request and
+response shapes, malformed framing, cookie attributes, CSRF/origin checks and safe
+logging. Capacity-only tests isolate the other resource limits while filling 128
+real session records. Browser cookie enforcement remains unverified.
+
+```powershell
+& 'C:\Users\Honey\AppData\Local\Programs\Python\Python313\python.exe' -B -m unittest discover -s tests -p 'test_auth*.py' -v
+```
+
+See [authentication.md](../docs/authentication.md) for exact contracts and the
+explicit boundary: existing Studio routes do not require owner login until UI-C3.

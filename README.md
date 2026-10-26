@@ -4,7 +4,7 @@ Application Tracker manages several candidate profiles for a Chrome extension. A
 
 **Current scope:** The web platform includes Home, combined candidate/profile management, template libraries, Resume Studio PDF preview/download, and [Extension Studio integration management](docs/extension-studio.md). Legacy extension capture remains separate. New candidate-scoped extension operations, bid-folder saving, a bidding queue and application statuses are pending. Installed-extension/native capture has not been verified end to end by the synthetic web tests.
 
-**Owner security checkpoint UI-C1:** [Local owner setup and recovery](docs/owner-security.md) now provide a private, versioned credential store and explicit administrative CLI. Login sessions and authorization of manager routes are pending UI-C2/UI-C3; creating an owner does not yet secure the running manager. No existing candidate data is migrated.
+**Owner security checkpoints UI-C1/UI-C2:** [Local owner setup and recovery](docs/owner-security.md) provide the private credential store and administrative CLI. [Backend login and sessions](docs/authentication.md) now supply cookie authentication endpoints. Authorization of existing manager routes and the web login gate remain pending UI-C3; creating an owner or logging in does not yet secure the overall manager. No existing candidate data is migrated.
 
 ## What's new
 
