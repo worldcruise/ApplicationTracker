@@ -1,0 +1,30 @@
+:root { font: 15px/1.6 system-ui, sans-serif; color: #17233a; background: #f5f7fb; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; }
+main { max-width: 1000px; margin: 0 auto; padding: 40px 24px 60px; }
+h1 { font-size: clamp(26px, 4vw, 36px); line-height: 1.2; margin: 6px 0 16px; }
+h2 { font-size: 20px; margin: 0 0 12px; }
+h3 { margin: 0; font-size: 17px; }
+p { margin: 10px 0; }
+.eyebrow { color: #526780; letter-spacing: .1em; font-weight: 750; font-size: 12px; }
+.panel { background: white; border: 1px solid #dbe3ee; border-radius: 14px; padding: 24px; margin-top: 24px; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+button { padding: 10px 14px; border: 1px solid transparent; border-radius: 8px; color: white; background: #3569dc; font: inherit; font-weight: 650; cursor: pointer; }
+button:hover:not(:disabled) { background: #285ac8; }
+button.secondary { color: #285bad; background: #eef4ff; border-color: #cfddf5; }
+button.secondary:hover:not(:disabled) { background: #dfeaff; }
+button:focus-visible, a:focus-visible { outline: 3px solid #7298ed; outline-offset: 3px; }
+button:disabled { opacity: .55; cursor: default; }
+.muted, footer { color: #52637c; font-size: 13px; }
+footer { margin-top: 24px; }
+.candidates { display: grid; gap: 16px; margin-top: 20px; }
+.candidate { padding: 20px; border: 1px solid #dbe3ee; border-radius: 10px; }
+.candidate p { overflow-wrap: anywhere; }
+.badge { display: inline-block; margin-left: 10px; padding: 2px 8px; border-radius: 12px; font-size: 11px; color: #17674f; background: #e5f6ed; vertical-align: middle; }
+.status { font-weight: 650; }
+.status[data-state="ready"] { color: #17674f; }
+.status[data-state="error"], #folder-status[data-state="error"] { color: #a43d45; }
+#notice { padding: 12px 16px; margin-top: 24px; border-radius: 8px; background: #eaf1ff; border: 1px solid #c8d8f5; }
+#notice[data-kind="error"] { color: #8b2933; background: #fff1f2; border-color: #edc8ce; }
+@media (max-width: 600px) { main { padding: 24px 14px; } .panel { padding: 18px; } .actions button { width: 100%; } }

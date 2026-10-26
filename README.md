@@ -1,8 +1,10 @@
 # Application Tracker
 
-Application Tracker manages several candidate profiles for a Chrome extension. A local management page lets you edit each candidate's settings and choose the active candidate. The extension reads a highlighted company name, captures the page as MHTML, and reads selected page sections. A Python native host saves the archive and returns a generated prompt for copying.
+Application Tracker manages several candidate profiles for a Chrome extension. A local management page lets you edit each candidate's settings and choose the active candidate. The extension hotkey copies extracted JD text, the current tab URL, and an optional selected company. The separate legacy context-menu action captures MHTML and uses a Python native host to save the archive and return a generated prompt.
 
-**Current scope:** Candidate setup and active-candidate routing. The Tracking dashboard, Bidding queue, application statuses, and folder deletion are future stages. The component code has been provided file by file, but the assembled Windows workflow has not yet been tested end to end.
+**Current scope:** The web platform includes Home, combined candidate/profile management, template libraries, Resume Studio PDF preview/download, and [Extension Studio integration management](docs/extension-studio.md). Legacy extension capture remains separate. New candidate-scoped extension operations, bid-folder saving, a bidding queue and application statuses are pending. Installed-extension/native capture has not been verified end to end by the synthetic web tests.
+
+**Owner security checkpoint UI-C1:** [Local owner setup and recovery](docs/owner-security.md) now provide a private, versioned credential store and explicit administrative CLI. Login sessions and authorization of manager routes are pending UI-C2/UI-C3; creating an owner does not yet secure the running manager. No existing candidate data is migrated.
 
 ## What's new
 
@@ -10,10 +12,11 @@ Application Tracker manages several candidate profiles for a Chrome extension. A
 - Separate history folder and prompt for each candidate. Candidates may share an installed Chrome extension ID. A prompt can be pasted or linked to a UTF-8 `.txt` or `.md` file.
 - A guided configuration window with a history-folder test.
 - One shared native host that registers the configured extension IDs and reads the active candidate from a central configuration file.
-- The extension reads the company name you highlight, captures an MHTML archive, and takes text only from `<div>` elements whose ID starts with `overview`, `div#company`, and `<article>` elements. The host saves the archive and builds a prompt from that text and the active candidate's template; the extension copies the returned prompt.
+- `Ctrl+Shift+F` copies matching JD sections and the actual tab URL. Selecting a company adds its name and a best-effort, read-only saved-company lookup. Copying works regardless of the lookup result; no selection means no native lookup. See [hotkey behavior and review steps](docs/hotkey-clipboard.md).
+- The separate **Check + Save Company** context-menu action captures an MHTML archive and takes text from `<div>` elements whose ID starts with `overview`, `div#company`, and `<article>` elements. The host saves the archive and builds a prompt from that text and the active candidate's template; the extension copies the returned prompt.
 - The host matches the calling extension ID and popup candidate name, then checks whether that candidate is active.
 
-One extension can be used for several candidates. The extension popup stores the candidate name; the host checks that name and the caller's extension ID, then permits folder access only while that candidate is active. Change the popup name when switching candidates.
+One extension can be used for several candidates. The popup name, configured extension ID and active candidate govern legacy saving and the optional hotkey duplicate lookup. A lookup authorization failure is reported without blocking clipboard copying. Change the popup name when switching legacy candidates. The hotkey never changes the active candidate.
 
 ## Folder layout
 
@@ -69,11 +72,11 @@ The native-host manifest is generated when you save the first candidate. Keep th
 3. Select **Add candidate**. Enter a name and the actual extension ID. Paste the candidate's prompt text, or select **Use a .txt or .md file** and choose its path with **Browse**. Enter or browse to a history folder, select **Test folder**, then **Save candidate**.
 4. Saving runs `native-host/register_host.py`. It writes the native-host manifest and registers it for your Windows user. The page reports any registration error.
 5. Select the candidate's **Active** radio button, or check **Set this candidate active after saving**. The active candidate appears at the top of the page.
-6. Click the extension icon, enter the same candidate name used in the manager, and select **Save name**. On a job page, highlight the company name and use the extension's right-click action or `Ctrl+Shift+F`. The host stops with “This candidate is not active.” if another candidate is active; otherwise it checks the folder, saves the MHTML archive, and uses the matching page sections to build the prompt for copying.
+6. For legacy saving or optional duplicate lookup, click the extension icon, enter the same candidate name used in the manager, and select **Save name**. The **Check + Save Company** right-click action still requires this candidate to be active and can save MHTML. `Ctrl+Shift+F` only copies Company/JD/URL, or JD/URL when nothing is selected. It never saves MHTML or invokes a native save, and lookup failure never prevents copying.
 
 You may close the manager after setting the active candidate. Chrome starts the native host when the extension sends a message; the management page does not need to remain open for a capture. Reopen it with `py -3 manager\app.py` to change settings.
 
-## Saved job files
+## Legacy context-menu saved job files
 
 The host creates a company folder in the active candidate's history folder. It writes:
 
@@ -84,7 +87,7 @@ The host creates a company folder in the active candidate's history folder. It w
 
 The host uses the matching page text to build the prompt and returns it for clipboard copying. It does not write `job_description.txt` or `resume_prompt.txt`.
 
-If a matching company folder already exists, the extension displays **Already saved** and stops. At this stage, folder existence means the company was saved; it does not prove that an application was submitted.
+If a matching company folder already exists, the legacy context-menu action displays **Already saved** and stops. The hotkey still copies and displays the duplicate status. Folder existence does not prove that an application was submitted. Duplicate lookup does not create missing history directories.
 
 ## Existing history and multiple candidates
 

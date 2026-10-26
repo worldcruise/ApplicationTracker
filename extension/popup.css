@@ -13,3 +13,6 @@ input:focus-visible, button:focus-visible { outline: 3px solid #9ab7ff; outline-
 #status { min-height: 18px; margin: 12px 0 0; color: #187153; }
 #status.error { color: #a43d45; }
 .hint { margin: 10px 0 0; font-size: 12px; }
+.studio-link { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid #dbe3ee; }
+.studio-link a { color: #285bad; font-weight: 650; }
+.studio-link a:focus-visible { outline: 3px solid #9ab7ff; outline-offset: 3px; }

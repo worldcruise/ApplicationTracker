@@ -1,5 +1,6 @@
 const HOST_NAME = "com.kevin.candidate_host";
 const MENU_ID = "check-save-candidate-company";
+importScripts("integration-diagnostics.js");
 
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -26,7 +27,7 @@ chrome.commands.onCommand.addListener(async (command) => {
   if (command !== "check-selected-company") return;
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab?.id) return;
-  await handleCompanySave(await getSelectedText(tab.id), tab);
+  await handleJobCopy(await getSelectedText(tab.id), tab);
 });
 
 
@@ -174,6 +175,81 @@ async function copyTextToClipboard(tabId, text) {
   }
 }
 
+
+// The hotkey only reads and copies. Native Messaging is optional status lookup;
+// it must never reach the separate legacy context-menu save handler below.
+async function checkCompanyReadOnly(companyName) {
+  let timer;
+  try {
+    return await Promise.race([
+      (async () => {
+        const settings = await chrome.storage.local.get("candidateName");
+        const candidateName = String(settings.candidateName || "").trim();
+        if (!candidateName) throw new Error("No legacy candidate name is configured for saved-status lookup.");
+        const result = await chrome.runtime.sendNativeMessage(HOST_NAME, {
+          action: "check_company", candidateName, companyName
+        });
+        if (!result?.ok || typeof result.exists !== "boolean") {
+          throw new Error(result?.error || "Saved-company lookup returned no valid status.");
+        }
+        return result;
+      })(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Saved-company lookup timed out.")), 2000);
+      })
+    ]);
+  } catch (error) {
+    return { ok: false, error: error?.message || String(error) };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function handleJobCopy(companyName, tab) {
+  if (!tab?.id) return;
+  const company = normalizeSelectedText(companyName);
+  let jobDescription = "", extractionError = false;
+  try {
+    jobDescription = await extractCompanyText(tab.id);
+  } catch {
+    extractionError = true;
+  }
+  const jobUrl = tab.url || "";
+  const text = [
+    ...(company ? [`Company: ${company}`] : []),
+    `Job URL: ${jobUrl}`,
+    `Job Description:\n${jobDescription}`
+  ].join("\n\n");
+  // Begin lookup without awaiting it. Copying has no native-host dependency.
+  const lookup = company ? checkCompanyReadOnly(company) : null;
+  const copied = await copyTextToClipboard(tab.id, text);
+  if (!copied.ok) {
+    await showPageMessage(tab.id, `Clipboard copy failed: ${copied.error}`);
+    return;
+  }
+
+  const limitations = [];
+  if (extractionError) limitations.push("JD extraction failed; only the available information was copied.");
+  else if (!jobDescription.trim()) limitations.push("No matching overview, company, or article JD text was found; the JD section is empty.");
+  else limitations.push("JD uses matching overview, company, and article sections; it may be incomplete.");
+  if (!jobUrl) limitations.push("The current tab URL was unavailable; the URL field is empty.");
+  const partial = extractionError || !jobDescription.trim() || !jobUrl;
+  const copiedLabel = partial ? "Copied available job information." : company ? "Copied Company, JD and URL." : "Copied JD and URL.";
+  if (lookup) {
+    await showPageMessage(tab.id, `${copiedLabel}\n${limitations.join("\n")}\nChecking saved-company status…`, "info");
+    const result = await lookup;
+    if (!result.ok) {
+      await showPageMessage(tab.id, `${copiedLabel}\n${limitations.join("\n")}\nSaved status unavailable: ${result.error}`, "info");
+      return;
+    }
+    if (result.exists) {
+      const path = typeof result.folderPath === "string" && result.folderPath ? `\n${result.folderPath}` : "";
+      await showPageMessage(tab.id, `Already saved:${path}\n${copiedLabel}\n${limitations.join("\n")}`, "info");
+      return;
+    }
+  }
+  await showPageMessage(tab.id, `${copiedLabel}\n${limitations.join("\n")}`, partial ? "info" : "success");
+}
 
 async function handleCompanySave(companyName, tab) {
   if (!tab?.id) return;

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "supportedSettings": {
+    "bodyFontSize": { "type": "number", "minimum": 9, "maximum": 13 },
+    "pageMargin": { "type": "number", "minimum": 36, "maximum": 72 },
+    "sectionSpacing": { "type": "number", "minimum": 6, "maximum": 24 },
+    "accentColor": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+    "pageNumbers": { "type": "boolean" },
+    "textColor": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+    "lineHeight": { "type": "number", "minimum": 1, "maximum": 1.8 },
+    "nameFontSize": { "type": "number", "minimum": 16, "maximum": 34 },
+    "nameColor": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+    "titleFontSize": { "type": "number", "minimum": 10, "maximum": 20 },
+    "contactFontSize": { "type": "number", "minimum": 8, "maximum": 13 },
+    "headerAlignment": { "type": "string", "pattern": "^(left|center|right)$" },
+    "headingFontSize": { "type": "number", "minimum": 10, "maximum": 18 },
+    "showSummary": { "type": "boolean" },
+    "showSkills": { "type": "boolean" },
+    "showExperience": { "type": "boolean" },
+    "showEducation": { "type": "boolean" }
+  },
+  "layouts": [
+    {
+      "id": "classic", "version": 1, "name": "Classic",
+      "description": "Centered header, conservative typography and ruled section headings.",
+      "defaultSettings": { "bodyFontSize": 10.5, "pageMargin": 54, "sectionSpacing": 12, "accentColor": "#222222", "pageNumbers": true, "textColor": "#222222", "lineHeight": 1.18, "nameFontSize": 22, "nameColor": "#222222", "titleFontSize": 12.5, "contactFontSize": 10, "headerAlignment": "center", "headingFontSize": 11.5, "showSummary": true, "showSkills": true, "showExperience": true, "showEducation": true }
+    },
+    {
+      "id": "modern", "version": 1, "name": "Modern",
+      "description": "Left-aligned header, larger name and restrained accent hierarchy.",
+      "defaultSettings": { "bodyFontSize": 10.5, "pageMargin": 44, "sectionSpacing": 14, "accentColor": "#1F5A7A", "pageNumbers": true, "textColor": "#222222", "lineHeight": 1.18, "nameFontSize": 26, "nameColor": "#1F5A7A", "titleFontSize": 12.5, "contactFontSize": 10, "headerAlignment": "left", "headingFontSize": 11.5, "showSummary": true, "showSkills": true, "showExperience": true, "showEducation": true }
+    }
+  ]
+}

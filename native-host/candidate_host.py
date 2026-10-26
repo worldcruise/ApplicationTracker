@@ -12,6 +12,14 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parent.parent
+# Chrome still launches this file directly, independently of the manager.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tracker_config import CandidateRegistryRepository
+from tracker_config.prompts import legacy_prompt_path
+
+
 CONFIG_DIR = ROOT / "config"
 STATE_FILE = CONFIG_DIR / "candidates.json"
 TEMPLATE_DIR = CONFIG_DIR / "templates"
@@ -82,17 +90,13 @@ def native_write(payload: dict[str, Any]) -> None:
 
 
 def load_state() -> dict[str, Any]:
-    if not STATE_FILE.is_file():
+    try:
+        return CandidateRegistryRepository(STATE_FILE).read(missing_ok=False).data
+    except FileNotFoundError as error:
         raise FileNotFoundError(
             "Candidate settings are missing. Open Application Tracker "
             "and add a candidate."
-        )
-
-    state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
-    if state.get("schemaVersion") != 1:
-        raise ValueError("Unsupported candidate settings version.")
-
-    return state
+        ) from error
 
 
 def caller_extension_id(arguments: list[str]) -> str:
@@ -164,37 +168,27 @@ def active_candidate(state: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def candidate_root(candidate: dict[str, Any]) -> Path:
+def candidate_root(candidate: dict[str, Any], *, create: bool = True) -> Path:
     root = Path(candidate["historyFolder"]).expanduser()
 
     if not root.is_absolute():
         raise ValueError("The candidate history folder must be absolute.")
 
     root = root.resolve()
-    root.mkdir(parents=True, exist_ok=True)
+    if create:
+        root.mkdir(parents=True, exist_ok=True)
     return root
 
 
 def candidate_template(candidate: dict[str, Any]) -> str:
+    prompt_path = legacy_prompt_path(candidate, CONFIG_DIR, TEMPLATE_DIR)
     if candidate.get("promptFilePath"):
-        prompt_path = Path(candidate["promptFilePath"]).expanduser()
-        if not prompt_path.is_absolute():
-            raise ValueError("The candidate prompt file path must be absolute.")
-        if prompt_path.suffix.lower() not in {".txt", ".md"} or not prompt_path.is_file():
-            raise ValueError("The candidate prompt file is missing or is not .txt or .md.")
         prompt_text = prompt_path.read_text(encoding="utf-8").strip()
         if not prompt_text:
             raise ValueError("The candidate prompt file is empty.")
         return prompt_text
 
-    relative_path = Path(candidate["promptTemplate"])
-    template_path = (CONFIG_DIR / relative_path).resolve()
-    allowed_dir = TEMPLATE_DIR.resolve()
-
-    if not template_path.is_relative_to(allowed_dir):
-        raise ValueError("Candidate template path is outside templates.")
-
-    return template_path.read_text(encoding="utf-8").strip()
+    return prompt_path.read_text(encoding="utf-8").strip()
 
 
 def sanitize_folder_name(name: str) -> str:
@@ -294,9 +288,13 @@ def handle_check_company(
         raise ValueError("Select a company name first.")
 
     candidate = active_candidate(state)
-    folder = find_company_folder(
-        candidate_root(candidate), company_name
-    )
+    root = candidate_root(candidate, create=False)
+    try:
+        folder = find_company_folder(root, company_name)
+    except FileNotFoundError:
+        # A missing history root means there is no saved company to match.
+        # Lookup must not create the root; explicit saves retain that behavior.
+        folder = None
 
     return {
         "ok": True,

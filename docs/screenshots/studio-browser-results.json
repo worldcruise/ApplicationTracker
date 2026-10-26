@@ -1,0 +1,956 @@
+{
+  "browser": "Chrome/156.0.8078.47",
+  "results": [
+    {
+      "name": "home-desktop",
+      "ready": true,
+      "view": "home",
+      "viewport": [
+        1650,
+        900
+      ],
+      "columns": "254px minmax(0px, 1fr) 350px",
+      "left": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "center": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "right": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "pdf": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "jsonVisible": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "valid": "Awaiting JSON",
+      "pdfBlob": false,
+      "landing": {
+        "x": 227.5,
+        "y": 94,
+        "width": 1180,
+        "height": 511.78125
+      },
+      "toolkit": {
+        "x": 227.5,
+        "y": 686.375,
+        "width": 1180,
+        "height": 242.5625
+      },
+      "candidateDirectory": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateProfile": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "birthdate": null,
+      "integration": null,
+      "overflowX": false
+    },
+    {
+      "name": "home-mobile",
+      "ready": true,
+      "view": "home",
+      "viewport": [
+        390,
+        900
+      ],
+      "columns": "1fr",
+      "left": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "center": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "right": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "pdf": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "jsonVisible": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "valid": "Awaiting JSON",
+      "pdfBlob": false,
+      "landing": {
+        "x": 16,
+        "y": 184,
+        "width": 343,
+        "height": 921.15625
+      },
+      "toolkit": {
+        "x": 16,
+        "y": 1216.9375,
+        "width": 343,
+        "height": 1157.6875
+      },
+      "candidateDirectory": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateProfile": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "birthdate": null,
+      "integration": null,
+      "overflowX": false
+    },
+    {
+      "name": "extensions-desktop",
+      "ready": true,
+      "view": "extensions",
+      "viewport": [
+        1650,
+        900
+      ],
+      "columns": "254px minmax(0px, 1fr) 350px",
+      "left": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "center": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "right": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "pdf": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "jsonVisible": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "valid": "Awaiting JSON",
+      "pdfBlob": false,
+      "landing": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "toolkit": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateDirectory": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateProfile": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "birthdate": null,
+      "integration": {
+        "backend": "Backend reached",
+        "browser": "Not checked",
+        "device": "Not configured",
+        "main": {
+          "x": 227.5,
+          "y": 440.171875,
+          "width": 703.875,
+          "height": 1457.015625
+        },
+        "preferences": {
+          "x": 953.375,
+          "y": 440.171875,
+          "width": 454.109375,
+          "height": 959.09375
+        }
+      },
+      "overflowX": false
+    },
+    {
+      "name": "extensions-mobile",
+      "ready": true,
+      "view": "extensions",
+      "viewport": [
+        390,
+        900
+      ],
+      "columns": "1fr",
+      "left": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "center": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "right": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "pdf": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "jsonVisible": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "valid": "Awaiting JSON",
+      "pdfBlob": false,
+      "landing": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "toolkit": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateDirectory": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateProfile": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "birthdate": null,
+      "integration": {
+        "backend": "Backend reached",
+        "browser": "Not checked",
+        "device": "Not configured",
+        "main": {
+          "x": 16,
+          "y": 780.734375,
+          "width": 343,
+          "height": 1843.65625
+        },
+        "preferences": {
+          "x": 16,
+          "y": 2646.390625,
+          "width": 343,
+          "height": 1034.265625
+        }
+      },
+      "overflowX": false
+    },
+    {
+      "name": "candidates-desktop",
+      "ready": true,
+      "view": "candidates",
+      "viewport": [
+        1650,
+        900
+      ],
+      "columns": "254px minmax(0px, 1fr) 350px",
+      "left": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "center": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "right": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "pdf": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "jsonVisible": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "valid": "Awaiting JSON",
+      "pdfBlob": false,
+      "landing": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "toolkit": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateDirectory": {
+        "x": 227.5,
+        "y": 246.375,
+        "width": 340,
+        "height": 351
+      },
+      "candidateProfile": {
+        "x": 589.5,
+        "y": 246.375,
+        "width": 818,
+        "height": 2784.515625
+      },
+      "birthdate": {
+        "display": "07/09/1992",
+        "pickerType": "date",
+        "pickerValue": "1992-07-09",
+        "currentDisablesEnd": true
+      },
+      "integration": null,
+      "overflowX": false
+    },
+    {
+      "name": "candidates-mobile",
+      "ready": true,
+      "view": "candidates",
+      "viewport": [
+        390,
+        900
+      ],
+      "columns": "1fr",
+      "left": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "center": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "right": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "pdf": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "jsonVisible": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "valid": "Awaiting JSON",
+      "pdfBlob": false,
+      "landing": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "toolkit": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateDirectory": {
+        "x": 16,
+        "y": 418.765625,
+        "width": 343,
+        "height": 351
+      },
+      "candidateProfile": {
+        "x": 16,
+        "y": 785.765625,
+        "width": 343,
+        "height": 3957.078125
+      },
+      "birthdate": {
+        "display": "07/09/1992",
+        "pickerType": "date",
+        "pickerValue": "1992-07-09",
+        "currentDisablesEnd": true
+      },
+      "integration": null,
+      "overflowX": false
+    },
+    {
+      "name": "profile-career",
+      "ready": true,
+      "view": "candidates",
+      "viewport": [
+        1650,
+        900
+      ],
+      "columns": "254px minmax(0px, 1fr) 350px",
+      "left": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "center": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "right": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "pdf": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "jsonVisible": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "valid": "Awaiting JSON",
+      "pdfBlob": false,
+      "landing": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "toolkit": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateDirectory": {
+        "x": 227.5,
+        "y": -1029.625,
+        "width": 340,
+        "height": 351
+      },
+      "candidateProfile": {
+        "x": 589.5,
+        "y": -1029.625,
+        "width": 818,
+        "height": 2784.515625
+      },
+      "birthdate": {
+        "display": "07/09/1992",
+        "pickerType": "date",
+        "pickerValue": "1992-07-09",
+        "currentDisablesEnd": true
+      },
+      "integration": null,
+      "overflowX": false
+    },
+    {
+      "name": "profile-calendar",
+      "ready": true,
+      "view": "candidates",
+      "viewport": [
+        1650,
+        900
+      ],
+      "columns": "254px minmax(0px, 1fr) 350px",
+      "left": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "center": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "right": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "pdf": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "jsonVisible": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "valid": "Awaiting JSON",
+      "pdfBlob": false,
+      "landing": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "toolkit": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateDirectory": {
+        "x": 227.5,
+        "y": 246.375,
+        "width": 340,
+        "height": 351
+      },
+      "candidateProfile": {
+        "x": 589.5,
+        "y": 246.375,
+        "width": 818,
+        "height": 2784.515625
+      },
+      "birthdate": {
+        "display": "07/09/1992",
+        "pickerType": "date",
+        "pickerValue": "1992-07-09",
+        "currentDisablesEnd": true
+      },
+      "integration": null,
+      "overflowX": false,
+      "calendarOpen": true
+    },
+    {
+      "name": "studio-desktop",
+      "ready": true,
+      "view": "resume",
+      "viewport": [
+        1650,
+        900
+      ],
+      "columns": "254px 1046px 350px",
+      "left": {
+        "x": 0,
+        "y": 107,
+        "width": 254,
+        "height": 793
+      },
+      "center": {
+        "x": 254,
+        "y": 107,
+        "width": 1046,
+        "height": 793
+      },
+      "right": {
+        "x": 1300,
+        "y": 107,
+        "width": 350,
+        "height": 793
+      },
+      "pdf": {
+        "x": 254,
+        "y": 192,
+        "width": 1046,
+        "height": 708
+      },
+      "jsonVisible": {
+        "x": 1317,
+        "y": 644.390625,
+        "width": 307,
+        "height": 330
+      },
+      "valid": "Valid JSON",
+      "pdfBlob": true,
+      "landing": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "toolkit": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateDirectory": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateProfile": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "birthdate": null,
+      "integration": null,
+      "overflowX": false
+    },
+    {
+      "name": "studio-responsive",
+      "ready": true,
+      "view": "resume",
+      "viewport": [
+        800,
+        1000
+      ],
+      "columns": "220px 565px",
+      "left": {
+        "x": 0,
+        "y": 142,
+        "width": 220,
+        "height": 750
+      },
+      "center": {
+        "x": 220,
+        "y": 142,
+        "width": 565,
+        "height": 750
+      },
+      "right": {
+        "x": 0,
+        "y": 892,
+        "width": 785,
+        "height": 718.78125
+      },
+      "pdf": {
+        "x": 220,
+        "y": 227,
+        "width": 565,
+        "height": 665
+      },
+      "jsonVisible": {
+        "x": 402.5,
+        "y": 999,
+        "width": 366.5,
+        "height": 330
+      },
+      "valid": "Valid JSON",
+      "pdfBlob": true,
+      "landing": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "toolkit": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateDirectory": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateProfile": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "birthdate": null,
+      "integration": null,
+      "overflowX": false
+    },
+    {
+      "name": "studio-mobile",
+      "ready": true,
+      "view": "resume",
+      "viewport": [
+        390,
+        900
+      ],
+      "columns": "375px",
+      "left": {
+        "x": 0,
+        "y": 197,
+        "width": 375,
+        "height": 380
+      },
+      "center": {
+        "x": 0,
+        "y": 577,
+        "width": 375,
+        "height": 620
+      },
+      "right": {
+        "x": 0,
+        "y": 1197,
+        "width": 375,
+        "height": 1150.171875
+      },
+      "pdf": {
+        "x": 0,
+        "y": 662,
+        "width": 375,
+        "height": 535
+      },
+      "jsonVisible": {
+        "x": 16,
+        "y": 1735.390625,
+        "width": 343,
+        "height": 330
+      },
+      "valid": "Valid JSON",
+      "pdfBlob": true,
+      "landing": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "toolkit": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateDirectory": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateProfile": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "birthdate": null,
+      "integration": null,
+      "overflowX": false
+    },
+    {
+      "name": "studio-multipage",
+      "ready": true,
+      "view": "resume",
+      "viewport": [
+        1650,
+        900
+      ],
+      "columns": "254px 1046px 350px",
+      "left": {
+        "x": 0,
+        "y": 107,
+        "width": 254,
+        "height": 793
+      },
+      "center": {
+        "x": 254,
+        "y": 107,
+        "width": 1046,
+        "height": 793
+      },
+      "right": {
+        "x": 1300,
+        "y": 107,
+        "width": 350,
+        "height": 793
+      },
+      "pdf": {
+        "x": 254,
+        "y": 192,
+        "width": 1046,
+        "height": 708
+      },
+      "jsonVisible": {
+        "x": 1317,
+        "y": 644.390625,
+        "width": 307,
+        "height": 330
+      },
+      "valid": "Valid JSON",
+      "pdfBlob": true,
+      "landing": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "toolkit": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateDirectory": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateProfile": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "birthdate": null,
+      "integration": null,
+      "overflowX": false
+    },
+    {
+      "name": "template-library",
+      "ready": true,
+      "view": "documents",
+      "viewport": [
+        1650,
+        900
+      ],
+      "columns": "254px minmax(0px, 1fr) 350px",
+      "left": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "center": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "right": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "pdf": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "jsonVisible": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "valid": "Awaiting JSON",
+      "pdfBlob": false,
+      "landing": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "toolkit": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateDirectory": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "candidateProfile": {
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0
+      },
+      "birthdate": null,
+      "integration": null,
+      "overflowX": false
+    }
+  ],
+  "remoteRequests": []
+}

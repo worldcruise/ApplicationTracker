@@ -16,59 +16,73 @@ from urllib.parse import urlsplit
 
 
 ROOT = Path(__file__).resolve().parent.parent
+# Support the existing `python manager/app.py` entry point without installation.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tracker_config import CandidateRegistryRepository, atomic_write_text
+from tracker_config.models import RevisionConflict
+from tracker_config.repositories import ConfigurationRepositories
+from tracker_config.web_studio import WebStudio, legacy_prompt
+
+
 CONFIG_FILE = ROOT / "config" / "candidates.json"
 TEMPLATE_DIR = ROOT / "config" / "templates"
 UI_DIR = ROOT / "manager" / "ui"
+EXTENSION_DIR = ROOT / "extension"
 HOST_DIR = ROOT / "native-host"
+
+# Exact read-only resources, never a directory listing or a path supplied by a client.
+SHARED_STATIC_FILES = {
+    "/shared/resume-renderer.mjs": ("shared/resume-renderer.mjs", "text/javascript; charset=utf-8"),
+    "/shared/data-contracts.mjs": ("shared/data-contracts.mjs", "text/javascript; charset=utf-8"),
+    "/shared/data-contracts-v1.json": ("shared/data-contracts-v1.json", "application/json; charset=utf-8"),
+    "/shared/document-settings.mjs": ("shared/document-settings.mjs", "text/javascript; charset=utf-8"),
+    "/shared/document-layouts-v1.json": ("shared/document-layouts-v1.json", "application/json; charset=utf-8"),
+    "/shared/vendor/pdfmake-0.3.11/pdfmake.min.js": ("shared/vendor/pdfmake-0.3.11/pdfmake.min.js", "text/javascript; charset=utf-8"),
+    "/shared/vendor/pdfmake-0.3.11/vfs_fonts.js": ("shared/vendor/pdfmake-0.3.11/vfs_fonts.js", "text/javascript; charset=utf-8"),
+    # This one existing dependency is shared by Studio and the data-contract module.
+    "/studio/contracts.mjs": ("studio/contracts.mjs", "text/javascript; charset=utf-8"),
+}
+
+
+def shared_static_resource(path: str):
+    entry = SHARED_STATIC_FILES.get(path)
+    if entry is None:
+        return None
+    relative, content_type = entry
+    extension_root = EXTENSION_DIR.resolve()
+    intended_root = (EXTENSION_DIR / relative.split("/", 1)[0]).resolve()
+    file_path = (EXTENSION_DIR / relative).resolve()
+    if not intended_root.is_relative_to(extension_root) or not file_path.is_relative_to(intended_root):
+        raise PermissionError("Shared resource is outside its approved directory.")
+    return file_path, content_type
+
 
 EXTENSION_ID_PATTERN = re.compile(r"[a-p]{32}")
 MAX_REQUEST_BYTES = 512_000
 WRITE_LOCK = threading.Lock()
 SESSION_TOKEN = secrets.token_urlsafe(32)
+_CURRENT_REVISION = object()
+
+
+def candidate_repository() -> CandidateRegistryRepository:
+    return CandidateRegistryRepository(CONFIG_FILE)
 
 
 def load_state() -> dict:
-    if not CONFIG_FILE.exists():
-        return {
-            "schemaVersion": 1,
-            "activeCandidateId": None,
-            "candidates": [],
-        }
-
-    state = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
-
-    if state.get("schemaVersion") != 1:
-        raise ValueError("Unsupported candidates.json version.")
-
-    return state
+    return candidate_repository().read().data
 
 
 def write_text_atomic(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        delete=False,
-    ) as file:
-        temporary_path = Path(file.name)
-        file.write(text)
-
-    try:
-        os.replace(temporary_path, path)
-    except Exception:
-        temporary_path.unlink(missing_ok=True)
-        raise
+    atomic_write_text(path, text)
 
 
-def save_state(state: dict) -> None:
-    write_text_atomic(
-        CONFIG_FILE,
-        json.dumps(state, indent=2, ensure_ascii=False) + "\n",
-    )
+def save_state(state: dict, *, expected_revision=_CURRENT_REVISION) -> None:
+    repository = candidate_repository()
+    if expected_revision is _CURRENT_REVISION:
+        expected_revision = repository.read().revision
+    repository.save(state, expected_revision=expected_revision)
 
 
 def find_candidate(state: dict, candidate_id: str) -> dict:
@@ -215,6 +229,14 @@ def save_candidate(payload: dict, candidate_id: str | None = None) -> dict:
     if not EXTENSION_ID_PATTERN.fullmatch(extension_id):
         raise ValueError("Enter the installed extension's 32-character ID.")
 
+    snapshot = candidate_repository().read()
+    state = snapshot.data
+    existing_candidate = find_candidate(state, candidate_id) if candidate_id is not None else {}
+    if "registryRevision" in payload and payload["registryRevision"] != snapshot.revision:
+        raise RevisionConflict("Candidate registry changed while the configuration form was open.")
+    settings = {field: payload[field] for field in ("assignedPromptTemplateId", "preferredDocumentTemplateId") if field in payload}
+    settings = ConfigurationRepositories(CONFIG_FILE.parent).candidate_settings(settings, existing_candidate)
+
     if prompt_file_value:
         prompt_file = check_prompt_file(prompt_file_value)
     else:
@@ -223,11 +245,7 @@ def save_candidate(payload: dict, candidate_id: str | None = None) -> dict:
             raise ValueError("Paste the candidate's prompt text or choose a prompt file.")
 
     folder, _ = check_history_folder(payload.get("historyFolder"))
-    state = load_state()
-
-    if candidate_id is not None:
-        find_candidate(state, candidate_id)
-    else:
+    if candidate_id is None:
         candidate_id = uuid.uuid4().hex
 
     for other in state["candidates"]:
@@ -257,11 +275,16 @@ def save_candidate(payload: dict, candidate_id: str | None = None) -> dict:
         write_text_atomic(TEMPLATE_DIR / template_name, template_text)
 
     candidate = {
+        **existing_candidate,
+        **settings,
         "id": candidate_id,
         "name": name,
         "historyFolder": str(folder),
         "extensionId": extension_id,
     }
+    # Preserve unknown settings while retaining the existing prompt-mode switch.
+    candidate.pop("promptTemplate", None)
+    candidate.pop("promptFilePath", None)
     if prompt_file is None:
         candidate["promptTemplate"] = f"templates/{template_name}"
     else:
@@ -281,7 +304,7 @@ def save_candidate(payload: dict, candidate_id: str | None = None) -> dict:
     else:
         state["candidates"][existing_index] = candidate
 
-    save_state(state)
+    save_state(state, expected_revision=snapshot.revision)
     registration = sync_host_registration()
 
     return {
@@ -292,7 +315,8 @@ def save_candidate(payload: dict, candidate_id: str | None = None) -> dict:
 
 
 def delete_candidate(candidate_id: str) -> dict:
-    state = load_state()
+    snapshot = candidate_repository().read()
+    state = snapshot.data
     find_candidate(state, candidate_id)
     state["candidates"] = [
         candidate for candidate in state["candidates"]
@@ -301,7 +325,7 @@ def delete_candidate(candidate_id: str) -> dict:
     if state.get("activeCandidateId") == candidate_id:
         state["activeCandidateId"] = None
 
-    save_state(state)
+    save_state(state, expected_revision=snapshot.revision)
 
     cleanup_warning = None
     if re.fullmatch(r"[0-9a-f]{32}", candidate_id):
@@ -364,7 +388,9 @@ class TrackerHandler(BaseHTTPRequestHandler):
         return True
 
     def handle_error(self, error: Exception) -> None:
-        if isinstance(error, (ValueError, json.JSONDecodeError)):
+        if isinstance(error, RevisionConflict):
+            self.send_json(409, {"error": f"{error} Reload the record and reconcile your edits.", "code": "revision-conflict"})
+        elif isinstance(error, (ValueError, json.JSONDecodeError)):
             self.send_json(400, {"error": str(error)})
         elif isinstance(error, PermissionError):
             self.send_json(403, {"error": str(error)})
@@ -379,6 +405,18 @@ class TrackerHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
 
         try:
+            if path == "/api/studio/extension":
+                self.send_json(200, WebStudio(CONFIG_FILE.parent).extension_settings(EXTENSION_DIR))
+                return
+            if path == "/api/studio/state":
+                self.send_json(200, WebStudio(CONFIG_FILE.parent).state())
+                return
+            studio_match = re.fullmatch(r"/api/studio/candidates/([A-Za-z0-9_-]+)/(profile|prompt)", path)
+            if studio_match:
+                service = WebStudio(CONFIG_FILE.parent)
+                operation = service.profile if studio_match[2] == "profile" else service.prompt
+                self.send_json(200, operation(studio_match[1]))
+                return
             if path == "/api/state":
                 self.send_json(
                     200,
@@ -391,29 +429,37 @@ class TrackerHandler(BaseHTTPRequestHandler):
             )
             if match:
                 candidate = find_candidate(load_state(), match.group(1))
-                template_path = TEMPLATE_DIR / f"{candidate['id']}.txt"
                 self.send_json(
                     200,
                     {
-                        "promptTemplateText": template_path.read_text(
-                            encoding="utf-8"
-                        )
+                        "promptTemplateText": legacy_prompt(candidate, CONFIG_FILE.parent)
                     },
                 )
                 return
 
             static_files = {
                 "/": ("index.html", "text/html; charset=utf-8"),
+                "/extension-studio": ("index.html", "text/html; charset=utf-8"),
                 "/styles.css": ("styles.css", "text/css; charset=utf-8"),
                 "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+                "/studio-app.mjs": ("studio-app.mjs", "text/javascript; charset=utf-8"),
+                "/studio-core.mjs": ("studio-core.mjs", "text/javascript; charset=utf-8"),
+                "/extension-studio.mjs": ("extension-studio.mjs", "text/javascript; charset=utf-8"),
+                "/classic.svg": ("classic.svg", "image/svg+xml"),
+                "/modern.svg": ("modern.svg", "image/svg+xml"),
             }
 
-            if path not in static_files:
+            shared = shared_static_resource(path)
+            if shared is not None:
+                file_path, content_type = shared
+            elif path in static_files:
+                filename, content_type = static_files[path]
+                file_path = (UI_DIR / filename).resolve()
+                if not file_path.is_relative_to(UI_DIR.resolve()):
+                    raise PermissionError("UI resource is outside its approved directory.")
+            else:
                 self.send_error(404)
                 return
-
-            filename, content_type = static_files[path]
-            file_path = UI_DIR / filename
 
             if not file_path.is_file():
                 self.send_error(404)
@@ -424,6 +470,8 @@ class TrackerHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
+            if shared is not None:
+                self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             self.wfile.write(body)
 
@@ -439,14 +487,62 @@ class TrackerHandler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:
         self.handle_write("DELETE")
 
+    def reject_shared_method(self, path: str) -> bool:
+        if path.startswith("/shared/") or path == "/studio/contracts.mjs":
+            self.send_response(405)
+            self.send_header("Allow", "GET")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return True
+        return False
+
+    def do_HEAD(self) -> None:
+        if self.check_local_request() and not self.reject_shared_method(urlsplit(self.path).path):
+            self.send_error(501)
+
+    do_OPTIONS = do_HEAD
+    do_PATCH = do_HEAD
+
     def handle_write(self, method: str) -> None:
         if not self.check_local_request(write=True):
             return
 
         path = urlsplit(self.path).path
 
+        if self.reject_shared_method(path):
+            return
+
         try:
             payload = self.read_json()
+
+            if path.startswith("/api/studio/"):
+                service = WebStudio(CONFIG_FILE.parent)
+                service.check_payload(payload)
+                match = re.fullmatch(r"/api/studio/candidates/([A-Za-z0-9_-]+)/(profile|settings)", path)
+                prompt_match = re.fullmatch(r"/api/studio/prompts(?:/([A-Za-z0-9_-]+))?", path)
+                document_match = re.fullmatch(r"/api/studio/documents(?:/([A-Za-z0-9_-]+))?", path)
+                extension_match = re.fullmatch(r"/api/studio/extension/(preferences|device)", path)
+                with WRITE_LOCK:
+                    if extension_match and method == "PUT":
+                        response = service.envelope(service.repositories.save_extension_settings(
+                            extension_match[1], payload["data"], expected_revision=payload["revision"]))
+                    elif match and method == "PUT":
+                        if match[2] == "profile":
+                            response = service.save_profile(match[1], payload)
+                        else:
+                            response = service.envelope(service.repositories.update_candidate_settings(
+                                match[1], payload["data"], expected_revision=payload["revision"]))
+                    elif prompt_match and ((method == "POST" and prompt_match[1] is None) or (method == "PUT" and prompt_match[1])):
+                        response = service.envelope(service.repositories.save_prompt(
+                            payload["data"], template_id=prompt_match[1], expected_revision=payload["revision"]))
+                    elif document_match and ((method == "POST" and document_match[1] is None) or (method == "PUT" and document_match[1])):
+                        response = service.envelope(service.repositories.save_document(
+                            payload["data"], template_id=document_match[1], expected_revision=payload["revision"]))
+                    else:
+                        self.send_error(404)
+                        return
+                self.send_json(200, response)
+                return
 
             if method == "POST" and path == "/api/browse":
                 current_path = payload.get("currentPath", "")
@@ -483,10 +579,11 @@ class TrackerHandler(BaseHTTPRequestHandler):
 
                 elif method == "POST" and path == "/api/active":
                     candidate_id = payload.get("candidateId")
-                    state = load_state()
+                    snapshot = candidate_repository().read()
+                    state = snapshot.data
                     find_candidate(state, candidate_id)
                     state["activeCandidateId"] = candidate_id
-                    save_state(state)
+                    save_state(state, expected_revision=snapshot.revision)
                     response = {"state": state}
 
                 else:

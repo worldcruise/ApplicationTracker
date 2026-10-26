@@ -1,3 +1,6 @@
+import { initializeStudio } from "./studio-app.mjs";
+
+let studio;
 const elements = {
   activeSummary: document.getElementById("active-summary"),
   addCandidate: document.getElementById("add-candidate"),
@@ -30,12 +33,54 @@ const elements = {
   formError: document.getElementById("form-error"),
   registrationNote: document.getElementById("registration-note")
 };
+elements.promptAssignment = document.getElementById("candidate-prompt-assignment");
+elements.documentAssignment = document.getElementById("candidate-document-assignment");
+elements.assignmentStatus = document.getElementById("candidate-assignment-status");
 
 let state = { schemaVersion: 1, activeCandidateId: null, candidates: [] };
 let sessionToken = "";
 let editingCandidateId = null;
 let selectingCandidate = false;
 let deletingCandidateId = null;
+let candidateRegistryRevision;
+let candidateBaseline = null, candidateSaving = false;
+
+function candidateFields() {
+  const data = {
+    name: elements.name.value.trim(),
+    historyFolder: elements.historyFolder.value.trim(),
+    extensionId: elements.extensionId.value.trim().toLowerCase()
+  };
+  if (!elements.promptAssignment.disabled) data.assignedPromptTemplateId = elements.promptAssignment.value || null;
+  if (!elements.documentAssignment.disabled) data.preferredDocumentTemplateId = elements.documentAssignment.value || null;
+  if (elements.promptChoiceFile.checked) data.promptFilePath = elements.promptFilePath.value.trim();
+  else data.promptTemplateText = elements.promptTemplate.value;
+  return data;
+}
+
+function candidateSignature() { return JSON.stringify({ ...candidateFields(), activateAfterSave: elements.makeActive.checked }); }
+function updateCandidateSave() {
+  elements.saveCandidate.disabled = candidateSaving || candidateBaseline === null || candidateSignature() === candidateBaseline;
+}
+
+async function loadCandidateAssignments(candidate = {}) {
+  let snapshot, failure;
+  try { snapshot = await studio.candidateOptions(); }
+  catch (error) { failure = error; }
+  candidateRegistryRevision = snapshot?.registry.revision;
+  function fill(select, entries, currentId, emptyLabel) {
+    select.replaceChildren(); const empty = document.createElement("option"); empty.value = ""; empty.textContent = emptyLabel; select.append(empty);
+    for (const entry of entries) { const option = document.createElement("option"); option.value = entry.id; option.textContent = entry.name; select.append(option); }
+    if (currentId && !entries.some(entry => entry.id === currentId)) {
+      const unavailable = document.createElement("option"); unavailable.value = currentId; unavailable.textContent = `${currentId} (unavailable — retained until explicitly replaced)`; unavailable.disabled = true; select.append(unavailable);
+    }
+    select.value = currentId || "";
+  }
+  fill(elements.promptAssignment, snapshot?.prompts.data.templates.filter(item => !item.archived) || [], candidate.assignedPromptTemplateId, "Legacy prompt (existing file)");
+  fill(elements.documentAssignment, snapshot?.documents.templates.filter(item => !item.archived && ["classic", "modern"].includes(item.layoutId) && (item.rendererVersion === 1 || ["classic", "modern"].includes(item.id) && item.version === 1)) || [], candidate.preferredDocumentTemplateId, "Classic (renderer default)");
+  elements.promptAssignment.disabled = elements.documentAssignment.disabled = Boolean(failure);
+  elements.assignmentStatus.textContent = failure ? `Template choices could not load: ${failure.message} Existing assignments are preserved. You can still edit legacy candidate settings; repair the catalogs and reopen this form to change assignments.` : "Defaults apply only to this candidate. Legacy extension capture continues using its existing prompt file.";
+}
 
 function updatePromptMethod() {
   const useFile = elements.promptChoiceFile.checked;
@@ -63,7 +108,8 @@ async function api(path, options = {}) {
 
   const result = await response.json();
   if (!response.ok) {
-    throw new Error(result.error || `Request failed: ${response.status}`);
+    const error = new Error(result.error || `Request failed: ${response.status}`);
+    error.status = response.status; error.code = result.code; throw error;
   }
   return result;
 }
@@ -94,6 +140,7 @@ function detail(label, value) {
 }
 
 function render() {
+  studio?.candidatesChanged(state);
   const candidates = state.candidates || [];
   const active = candidates.find(candidate => candidate.id === state.activeCandidateId);
 
@@ -125,7 +172,7 @@ function render() {
     edit.disabled = selectingCandidate || Boolean(deletingCandidateId);
     edit.addEventListener("click", () => openEditCandidate(candidate));
 
-    const remove = makeElement("button", "button danger", "Delete");
+    const remove = makeElement("button", "profile-remove candidate-remove", "×");
     remove.type = "button";
     remove.title = `Delete ${candidate.name}`;
     remove.setAttribute("aria-label", `Delete ${candidate.name}`);
@@ -162,9 +209,13 @@ async function loadState() {
   render();
 }
 
-function openAddCandidate() {
+async function openAddCandidate() {
+  if (studio && !studio.allowContextChange()) return;
+  try { await loadCandidateAssignments(); }
+  catch (error) { showNotice(`Could not load candidate template choices: ${error.message}`, "error"); return; }
   editingCandidateId = null;
   elements.form.reset();
+  elements.promptAssignment.value = ""; elements.documentAssignment.value = "";
   elements.dialogTitle.textContent = "Add candidate";
   elements.saveCandidate.textContent = "Save candidate";
   elements.extensionId.value = state.candidates[0]?.extensionId || "";
@@ -173,17 +224,20 @@ function openAddCandidate() {
   setFolderResult("");
   elements.promptChoicePaste.checked = true;
   updatePromptMethod();
+  candidateBaseline = candidateSignature(); updateCandidateSave();
   elements.dialog.showModal();
   elements.name.focus();
 }
 
 async function openEditCandidate(candidate) {
+  if (studio && !studio.allowContextChange()) return;
   try {
     const prompt = candidate.promptFilePath
       ? ""
       : (await api(`/api/candidates/${encodeURIComponent(candidate.id)}/template`)).promptTemplateText;
     editingCandidateId = candidate.id;
     elements.form.reset();
+    await loadCandidateAssignments(candidate);
     elements.name.value = candidate.name;
     elements.historyFolder.value = candidate.historyFolder || "";
     elements.promptFilePath.value = candidate.promptFilePath || "";
@@ -197,6 +251,7 @@ async function openEditCandidate(candidate) {
     elements.saveCandidate.textContent = "Save changes";
     elements.formError.textContent = "";
     setFolderResult("");
+    candidateBaseline = candidateSignature(); updateCandidateSave();
     elements.dialog.showModal();
     elements.name.focus();
   } catch (error) {
@@ -207,6 +262,7 @@ async function openEditCandidate(candidate) {
 function closeCandidateDialog() {
   elements.dialog.close();
   editingCandidateId = null;
+  candidateBaseline = null; updateCandidateSave();
 }
 
 async function testHistoryFolder() {
@@ -257,25 +313,18 @@ async function browsePath(kind, input, button) {
 
 async function saveCandidate(event) {
   event.preventDefault();
+  updateCandidateSave(); if (elements.saveCandidate.disabled) return;
   if (!elements.form.reportValidity()) return;
 
-  const payload = {
-    name: elements.name.value.trim(),
-    historyFolder: elements.historyFolder.value.trim(),
-    extensionId: elements.extensionId.value.trim().toLowerCase()
-  };
-  if (elements.promptChoiceFile.checked) {
-    payload.promptFilePath = elements.promptFilePath.value.trim();
-  } else {
-    payload.promptTemplateText = elements.promptTemplate.value;
-  }
+  const payload = candidateFields();
+  if (candidateRegistryRevision !== undefined) payload.registryRevision = candidateRegistryRevision;
   const path = editingCandidateId
     ? `/api/candidates/${encodeURIComponent(editingCandidateId)}`
     : "/api/candidates";
   const method = editingCandidateId ? "PUT" : "POST";
   const activateAfterSave = elements.makeActive.checked;
 
-  elements.saveCandidate.disabled = true;
+  candidateSaving = true; updateCandidateSave();
   elements.formError.textContent = "";
   try {
     const result = await api(path, { method, body: payload });
@@ -310,12 +359,13 @@ async function saveCandidate(event) {
   } catch (error) {
     elements.formError.textContent = error.message;
   } finally {
-    elements.saveCandidate.disabled = false;
+    candidateSaving = false; updateCandidateSave();
   }
 }
 
 async function setActiveCandidate(candidate) {
   if (selectingCandidate || deletingCandidateId) return;
+  if (studio && !studio.allowContextChange()) { render(); return; }
   selectingCandidate = true;
   render();
   try {
@@ -335,10 +385,11 @@ async function setActiveCandidate(candidate) {
 
 async function deleteCandidate(candidate) {
   if (selectingCandidate || deletingCandidateId) return;
+  if (studio && !studio.allowContextChange()) return;
   const wasActive = state.activeCandidateId === candidate.id;
   const activeMessage = wasActive ? " You will need to select another active candidate." : "";
   if (!window.confirm(
-    `Delete ${candidate.name}'s profile and stored pasted prompt? Its saved application folders and any linked prompt file will stay on disk.${activeMessage}`
+    `Delete ${candidate.name}'s candidate registration and stored pasted prompt? Its structured profile, saved application folders and any linked prompt file will stay on disk.${activeMessage}`
   )) return;
 
   deletingCandidateId = candidate.id;
@@ -371,6 +422,7 @@ async function deleteCandidate(candidate) {
 elements.addCandidate.addEventListener("click", openAddCandidate);
 elements.emptyAdd.addEventListener("click", openAddCandidate);
 elements.refresh.addEventListener("click", () => {
+  if (studio && !studio.allowContextChange()) return;
   loadState().then(
     () => showNotice("Candidate list refreshed."),
     error => showNotice(error.message, "error")
@@ -378,13 +430,19 @@ elements.refresh.addEventListener("click", () => {
 });
 elements.closeDialog.addEventListener("click", closeCandidateDialog);
 elements.cancelDialog.addEventListener("click", closeCandidateDialog);
-elements.dialog.addEventListener("close", () => { editingCandidateId = null; });
+elements.dialog.addEventListener("close", () => { editingCandidateId = null; candidateBaseline = null; updateCandidateSave(); });
 elements.testFolder.addEventListener("click", testHistoryFolder);
 elements.historyFolder.addEventListener("input", () => setFolderResult(""));
 elements.browseFolder.addEventListener("click", () => browsePath("folder", elements.historyFolder, elements.browseFolder));
 elements.browsePrompt.addEventListener("click", () => browsePath("prompt", elements.promptFilePath, elements.browsePrompt));
 elements.promptChoicePaste.addEventListener("change", updatePromptMethod);
 elements.promptChoiceFile.addEventListener("change", updatePromptMethod);
+for (const input of [elements.name, elements.historyFolder, elements.extensionId, elements.promptTemplate, elements.promptFilePath,
+  elements.promptChoicePaste, elements.promptChoiceFile, elements.makeActive, elements.promptAssignment, elements.documentAssignment]) {
+  for (const event of ["input", "change"]) input.addEventListener(event, updateCandidateSave);
+}
+updateCandidateSave();
 elements.form.addEventListener("submit", saveCandidate);
 
+studio = initializeStudio({ api, editCandidate: openEditCandidate });
 loadState().catch(error => showNotice(`Could not load candidates: ${error.message}`, "error"));

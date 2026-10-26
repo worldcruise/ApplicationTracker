@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:resume-tailoring-studio:data-contracts:1",
+  "title": "Resume Tailoring Studio internal contract definitions, version 1",
+  "$defs": {
+    "text": {
+      "type": "string",
+      "pattern": "[^\\u0009-\\u000d\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000\\ufeff]"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$",
+      "format": "stable-id"
+    },
+    "version": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "templateReference": {
+      "type": "object",
+      "required": ["id", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "version": { "$ref": "#/$defs/version" }
+      }
+    },
+    "resume": {
+      "type": "object",
+      "required": ["company", "title", "summary", "skills", "experience", "education"],
+      "additionalProperties": false,
+      "properties": {
+        "company": { "$ref": "#/$defs/text" },
+        "title": { "$ref": "#/$defs/text" },
+        "summary": { "$ref": "#/$defs/text" },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "object", "minProperties": 1,
+            "propertyNames": { "$ref": "#/$defs/text" },
+            "additionalProperties": {
+              "type": "array", "minItems": 1,
+              "items": { "$ref": "#/$defs/text" }
+            }
+          }
+        },
+        "experience": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["title", "company", "sentences"],
+            "additionalProperties": false,
+            "properties": {
+              "title": { "$ref": "#/$defs/text" },
+              "company": { "$ref": "#/$defs/text" },
+              "sentences": {
+                "type": "array", "minItems": 1,
+                "items": { "$ref": "#/$defs/text" }
+              }
+            }
+          }
+        },
+        "education": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["degree"], "additionalProperties": false,
+            "properties": { "degree": { "$ref": "#/$defs/text" } }
+          }
+        }
+      }
+    },
+    "job": {
+      "type": "object",
+      "required": ["schemaVersion", "id", "candidateId", "jobDescription", "company", "createdAt"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "id": { "$ref": "#/$defs/identifier" },
+        "candidateId": { "$ref": "#/$defs/identifier" },
+        "jobDescription": { "$ref": "#/$defs/text" },
+        "company": { "$ref": "#/$defs/text" },
+        "sourceUrl": { "type": "string", "format": "http-url" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "promptTemplate": { "$ref": "#/$defs/templateReference" },
+        "documentTemplate": { "$ref": "#/$defs/templateReference" }
+      }
+    },
+    "coverLetter": {
+      "type": "object",
+      "required": ["schemaVersion", "candidateId", "jobId", "paragraphs"],
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "type": "integer", "const": 1 },
+        "candidateId": { "$ref": "#/$defs/identifier" },
+        "jobId": { "$ref": "#/$defs/identifier" },
+        "paragraphs": {
+          "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/text" }
+        }
+      }
+    }
+  }
+}

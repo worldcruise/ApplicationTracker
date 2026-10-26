@@ -1,0 +1,4 @@
+# Preserve upstream artifact bytes, including original line endings and license whitespace.
+pdfmake-0.3.11/* -text -whitespace
+pdfmake-0.3.11/pdfmake.min.js -diff
+pdfmake-0.3.11/vfs_fonts.js -diff

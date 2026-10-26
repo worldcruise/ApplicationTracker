@@ -3,29 +3,156 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Application Tracker — Settings</title>
+  <title>Resume Tailoring Studio</title>
   <link rel="stylesheet" href="/styles.css">
-  <script src="/app.js" defer></script>
+  <script type="importmap">{"imports":{"/extension/shared/":"/shared/","/extension/studio/contracts.mjs":"/studio/contracts.mjs"}}</script>
+  <script src="/app.js" type="module"></script>
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="brand-mark">AT</span> Application Tracker</div>
-    <div id="active-summary" class="active-summary">No active candidate</div>
+    <div class="brand"><span class="brand-mark">RS</span> Resume Tailoring Studio</div>
+    <nav class="studio-nav" aria-label="Main navigation">
+      <button type="button" data-page="home" aria-current="page">Home</button>
+      <button type="button" data-page="candidates">Candidates</button>
+      <button type="button" data-page="prompts">Prompt Templates</button>
+      <button type="button" data-page="documents">Document Templates</button>
+      <button type="button" data-page="resume">Resume Studio</button>
+      <button type="button" data-page="extensions">Extension Studio</button>
+    </nav>
+    <div class="header-actions"><button id="studio-refresh" class="button subtle" type="button" title="Reload configuration and revisions">Refresh</button><div id="active-summary" class="active-summary">No active candidate</div></div>
   </header>
 
   <main class="page">
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+    <div id="studio-status" class="notice" role="status" aria-live="polite" hidden></div>
+    <section id="page-home" class="studio-page" aria-labelledby="home-title">
+      <div class="landing-hero">
+        <div class="landing-intro"><p class="eyebrow">RESUME TAILORING STUDIO</p><h1 id="home-title">A stronger resume<br>starts here.</h1>
+          <p class="landing-description">Bring your experience, instructions and design together. Tailor a resume for your next opportunity, then make it your own.</p>
+          <div class="toolbar"><button id="home-start" class="button primary" type="button">Open Resume Studio <span aria-hidden="true">↗</span></button><button id="home-candidates" class="button secondary" type="button">Manage candidates</button></div>
+          <p class="landing-note">Local workspace · Your AI tool · Your final say</p>
+        </div>
+        <aside id="home-content" class="landing-context panel" aria-label="Active candidate workspace">Loading configuration…</aside>
+      </div>
+      <div class="landing-section-heading"><div><p class="eyebrow">YOUR TOOLKIT</p><h2>One place to prepare.</h2></div><p>Start where you need. Everything works together.</p></div>
+      <div id="home-tools" class="landing-tools" aria-label="Workspace tools"></div>
+      <section class="landing-workflow" aria-labelledby="workflow-title"><div><p class="eyebrow">FROM OPPORTUNITY TO APPLICATION</p><h2 id="workflow-title">A clear path to your next resume.</h2></div><ol>
+        <li><span class="step-number">1</span><div><h3>Build your foundation</h3><p>Keep your candidate profile and template defaults together.</p></div></li>
+        <li><span class="step-number">2</span><div><h3>Tailor with your AI tool</h3><p>Copy your prompt with the job description. Paste the JSON response.</p></div></li>
+        <li><span class="step-number">3</span><div><h3>Refine and download</h3><p>Customize the live PDF, review it and download when ready.</p></div></li>
+      </ol></section>
+    </section>
+    <section id="page-extensions" class="studio-page" hidden aria-labelledby="extensions-title">
+      <div class="page-heading"><div><p class="eyebrow">BROWSER INTEGRATION</p><h1 id="extensions-title">Extension Studio</h1><p class="subtitle">Manage setup and inspect what is available in this browser. Candidate identity stays in the existing registry.</p></div><button id="extension-refresh" class="button secondary" type="button">Reload settings</button></div>
+      <div id="extension-notice" class="notice" role="status" aria-live="polite" hidden></div>
+      <div class="extension-overview"><article class="panel"><p class="eyebrow">LOCAL BACKEND</p><h2 id="extension-backend-status">Not checked</h2><p class="field-help">This page uses the existing manager API and session protections.</p></article><article class="panel"><p class="eyebrow">THIS BROWSER</p><h2 id="extension-connection-status">Not checked</h2><p id="extension-connection-detail" class="field-help">A successful runtime response verifies the extension only, not native capture or folder access.</p></article></div>
+      <div class="extension-layout">
+        <div class="extension-main">
+          <section class="panel" aria-labelledby="extension-device-title"><div class="panel-heading"><div><p class="eyebrow">DEVICE-SPECIFIC</p><h2 id="extension-device-title">Extension connection</h2></div><span id="extension-device-state" class="scope-badge" role="status">Loading</span></div>
+            <p class="field-help">Stored for this local backend installation. This is a setup record, not computer registration or account authentication.</p>
+            <form id="extension-device-form" novalidate><fieldset id="extension-device-fields" disabled><legend class="sr-only">Local device settings</legend><div class="field-grid">
+              <div><label for="extension-device-label">Computer label</label><input id="extension-device-label" maxlength="80" placeholder="e.g. Work laptop"></div>
+              <div><label for="extension-timeout">Connection-check timeout (milliseconds)</label><input id="extension-timeout" type="number" min="1000" max="15000" step="1000" required></div>
+            </div><label for="extension-id-setting">Installed Chrome extension ID</label><input id="extension-id-setting" maxlength="32" pattern="[a-p]{32}" placeholder="32 lowercase letters from chrome://extensions" spellcheck="false" autocomplete="off"><p class="field-help">An empty ID is allowed while setting up. This does not change any candidate's legacy extension ID.</p>
+            <div class="toolbar"><button id="extension-device-save" class="button primary" type="submit" disabled>Save device settings</button><button id="extension-probe" class="button secondary" type="button" disabled>Check this browser</button></div></fieldset></form>
+          </section>
+          <section class="panel" aria-labelledby="extension-capture-title"><div class="panel-heading"><h2 id="extension-capture-title">Capture &amp; bidding preferences</h2><span class="scope-badge">Compatibility + pending</span></div>
+            <dl class="integration-facts"><div><dt>Legacy capture</dt><dd>Selected company → MHTML archive + metadata → copied legacy prompt.</dd></div><div><dt>Existing duplicate check</dt><dd>A matching company folder stops the normal legacy capture flow. It is not a concurrent-save lock.</dd></div><div><dt>New bidding workflow</dt><dd>Not implemented. No bid-folder writes or application submissions are initiated here.</dd></div></dl>
+            <p class="integration-dependency">Editable capture/bidding behavior requires a candidate-scoped operation API and save service. No preference controls are shown for behavior that cannot yet be applied.</p>
+          </section>
+          <section class="panel" aria-labelledby="extension-candidate-title"><h2 id="extension-candidate-title">Candidate selection behavior</h2><p>New job operations must ask for a candidate inside the extension and carry that candidate's stable ID through the operation.</p>
+            <div class="integration-policy">Per-operation candidate selection · no web-level capture candidate</div>
+            <p class="integration-dependency">The new operation bridge and candidate picker are pending. This page does not select or activate a candidate.</p>
+            <details><summary>Legacy compatibility behavior</summary><p>The existing popup stores a candidate name. Legacy Native Messaging capture still requires that candidate to be globally active. That restriction has not been copied into the new integration settings.</p></details>
+          </section>
+          <section class="panel" aria-labelledby="extension-files-title"><h2 id="extension-files-title">Local file-saving configuration</h2><p>Configuration-folder and external prompt-file grants are managed in the extension's existing Studio file-access page. Handles stay in extension-origin IndexedDB.</p>
+            <p class="integration-dependency">Bid-root selection, company-folder creation and application-file saving are pending. A saved path or extension ID does not grant filesystem permission.</p>
+            <p id="extension-setup-address" class="integration-address">Save an extension ID to prepare its setup-page address.</p><button id="extension-copy-setup" class="button secondary" type="button" disabled>Copy extension setup address</button><p class="field-help">Paste the address into Chrome's address bar. Web-page access cannot inspect another origin's folder grants.</p>
+          </section>
+        </div>
+        <aside class="extension-aside">
+          <section class="panel" aria-labelledby="extension-preferences-title"><div class="panel-heading"><div><p class="eyebrow">WORKSPACE PREFERENCES</p><h2 id="extension-preferences-title">Setup preferences</h2></div><span id="extension-preferences-state" class="scope-badge" role="status">Loading</span></div><p class="field-help">Shared by the current local workspace owner. Individual user accounts and cross-computer synchronization are not implemented.</p>
+            <form id="extension-preferences-form" novalidate><fieldset id="extension-preferences-fields" disabled><legend class="sr-only">Workspace setup preferences</legend><label for="extension-setup-page">Setup page for copied addresses</label><select id="extension-setup-page"><option value="file-access">Studio file access</option><option value="legacy-popup">Legacy candidate-name page</option></select><label class="checkbox-row"><input id="extension-confirm-copy" type="checkbox"> Confirm before copying setup addresses</label><p class="field-help">These preferences control the setup actions on this page. They do not alter capture behavior.</p><div class="toolbar"><button id="extension-preferences-save" class="button primary" type="submit" disabled>Save preferences</button></div></fieldset></form>
+          </section>
+          <section class="panel" aria-labelledby="extension-diagnostics-title"><div class="panel-heading"><h2 id="extension-diagnostics-title">Integration diagnostics</h2><button id="extension-copy-diagnostics" class="button subtle" type="button" disabled>Copy report</button></div><dl id="extension-diagnostics" class="integration-facts"><div><dt>Status</dt><dd>Loading package diagnostics…</dd></div></dl><p class="field-help">Package availability is not installation proof. A browser response is not pairing, native-host health or successful capture.</p></section>
+        </aside>
+      </div>
+    </section>
+    <section id="page-prompts" class="studio-page" hidden aria-labelledby="prompts-title">
+      <div class="page-heading"><div><p class="eyebrow">MANAGED PROMPTS</p><h1 id="prompts-title">Prompt Templates</h1></div><button id="prompt-new" class="button primary" type="button">New template</button></div>
+      <p>Legacy prompts stay in their existing files. Managed templates are a separate, explicitly maintained catalog.</p>
+      <div class="studio-split"><div id="prompt-list" class="panel"></div>
+      <form id="prompt-editor" class="panel" hidden>
+        <h2 id="prompt-editor-title">Template</h2><p id="prompt-dirty" role="status"></p>
+        <label for="prompt-name">Name</label><input id="prompt-name" required>
+        <label for="prompt-description">Description</label><textarea id="prompt-description" rows="2"></textarea>
+        <label for="prompt-category">Category</label><input id="prompt-category">
+        <label for="prompt-body">Complete prompt body</label><textarea id="prompt-body" rows="18" required spellcheck="false"></textarea>
+        <p class="field-help">Optional JD placeholder: <code>{{JOB_DESCRIPTION}}</code>. Otherwise the original JD is appended under Job Description.</p>
+        <label class="checkbox-row"><input id="prompt-default" type="checkbox"> Catalog default (does not assign candidates)</label>
+        <label class="checkbox-row"><input id="prompt-archived" type="checkbox"> Archived</label>
+        <div class="toolbar"><button id="prompt-save" class="button primary" type="submit" disabled>Save template</button><button id="prompt-duplicate" class="button secondary" type="button">Duplicate as draft</button><button id="prompt-discard" class="button subtle" type="button">Discard changes</button></div>
+      </form></div>
+      <p class="field-help">Assign a prompt in Candidates → Edit candidate. Archiving preserves existing references and warns affected candidates.</p>
+    </section>
+    <section id="page-documents" class="studio-page" hidden aria-labelledby="documents-title">
+      <div class="page-heading"><div><p class="eyebrow">DESIGN LIBRARY</p><h1 id="documents-title">Document Templates</h1></div><button id="document-new" class="button primary" type="button">Create configuration</button></div>
+      <p>Reusable designs built on the supported Classic and Modern layouts. Assign candidate defaults in Candidates.</p>
+      <div id="document-gallery" class="template-gallery"></div>
+      <form id="document-editor" class="panel" hidden>
+        <h2 id="document-editor-title">Document configuration</h2><p id="document-dirty" role="status"></p>
+        <label for="document-name">Configuration name</label><input id="document-name" required>
+        <label for="document-description">Description</label><textarea id="document-description" rows="2"></textarea>
+        <label for="document-layout">Supported layout</label><select id="document-layout"><option value="classic">Classic</option><option value="modern">Modern</option></select>
+        <div id="document-settings" class="document-settings-grid"></div>
+        <label class="checkbox-row"><input id="document-archived" type="checkbox"> Archived (existing assignments remain referenced)</label>
+        <p id="document-references"></p><div class="toolbar"><button id="document-save" class="button primary" type="submit" disabled>Save configuration</button><button id="document-discard" class="button subtle" type="button">Discard changes</button></div>
+      </form>
+      <p class="field-help">Built-ins are read-only; duplicate one to customize. Thumbnails represent the supported layout using synthetic content. Saved settings control the actual PDF.</p>
+    </section>
+    <section id="page-resume" class="studio-page" hidden aria-labelledby="resume-title">
+      <h1 id="resume-title" class="sr-only">Resume Studio</h1>
+      <div class="workspace-bar"><div class="workspace-heading"><button id="customize-toggle" class="icon-button" type="button" aria-controls="customize-panel" aria-expanded="true" title="Toggle customization sidebar">☷</button><strong>Resume Studio</strong><span class="workspace-separator">/</span><input id="resume-candidate" class="context-name" aria-label="Active candidate" readonly></div><span class="local-badge">LOCAL WORKSPACE · UNSAVED</span></div>
+      <div class="resume-workspace" id="resume-workspace">
+        <aside class="customize-panel" id="customize-panel" aria-labelledby="customize-title">
+          <div class="sidebar-heading"><h2 id="customize-title">Customize Resume</h2><span class="subtle-symbol" aria-hidden="true">⚙</span></div>
+          <details class="customize-group" open><summary>Document template</summary><p id="resume-preference" class="field-help"></p><div id="resume-thumbnails" class="compact-templates"></div><label class="sr-only" for="resume-template">Template for this session</label><select id="resume-template"></select></details>
+          <div id="resume-settings"></div>
+          <p class="sidebar-note">Session changes apply to this resume. Change candidate defaults in Candidates.</p>
+        </aside>
+        <section class="viewer-panel" aria-label="Live PDF document preview">
+          <div class="viewer-toolbar"><div><span class="viewer-dot" aria-hidden="true"></span><strong>Live preview</strong><span class="viewer-size">US Letter</span></div><button id="resume-download" class="button primary" type="button" disabled>↓ Download PDF</button></div>
+          <div class="viewer-status"><span id="preview-status" role="status">Paste valid resume JSON to begin.</span><span>Page navigation &amp; zoom in PDF toolbar</span></div>
+          <div class="pdf-stage"><div id="preview-empty" class="preview-empty"><span class="empty-document" aria-hidden="true">▤</span><h2>Your resume appears here</h2><p>Paste the JSON response in the AI Assistant.<br>Choose explicit profile associations to preview your PDF.</p></div><iframe id="pdf-preview" title="Generated PDF with page navigation, page count and zoom controls" hidden></iframe></div>
+        </section>
+        <aside class="assistant-panel" aria-labelledby="assistant-title">
+          <div class="sidebar-heading"><h2 id="assistant-title"><span class="assistant-star" aria-hidden="true">✧</span> AI Assistant</h2><span class="local-label">MANUAL</span></div>
+          <details class="assistant-group" open><summary>AI Prompt</summary><p id="resume-prompt-source" class="source-label" role="status"></p>
+            <label for="assistant-prompt">Assigned instructions</label><textarea id="assistant-prompt" class="code-input assigned-prompt" readonly rows="6" placeholder="Loading assigned prompt…"></textarea>
+            <button id="prompt-retry" class="button subtle" type="button">Reload assigned prompt</button>
+            <label for="resume-jd">Original job description</label><textarea id="resume-jd" rows="5" placeholder="Paste the original job description…"></textarea>
+            <button id="resume-copy-prompt" class="button primary full-width" type="button">Copy Prompt + JD</button><p class="field-help">Paste into your AI tool. No AI provider is connected.</p>
+          </details>
+          <section class="assistant-group json-group" aria-labelledby="response-title"><div class="response-heading"><h3 id="response-title">JSON Response</h3><span id="json-status" class="validation-badge" role="status">Awaiting JSON</span><button id="resume-copy-json" class="button subtle" type="button">Copy JSON</button></div>
+            <label class="sr-only" for="resume-json">Generated resume JSON</label><textarea id="resume-json" class="code-input json-input" rows="18" spellcheck="false" placeholder='{"company":"…","title":"…","summary":"…","skills":[],"experience":[],"education":[]}'></textarea>
+            <p class="field-help">Paste one JSON object or one JSON code block. Valid changes update the PDF automatically.</p><div id="resume-errors" class="field-result error" role="alert"></div>
+            <details class="binding-details" open><summary>Profile associations</summary><div id="resume-bindings"></div></details>
+          </section>
+        </aside>
+      </div>
+    </section>
+    <section id="page-candidates" class="studio-page" hidden aria-labelledby="candidate-workspace-title">
     <div class="page-heading">
       <div>
-        <p class="eyebrow">SETTINGS</p>
-        <h1>Candidate profiles</h1>
-        <p class="subtitle">Keep each candidate’s history folder and prompt separate. Select the active candidate for new captures.</p>
+        <p class="eyebrow">PEOPLE &amp; PROFILES</p>
+        <h1 id="candidate-workspace-title">Candidates</h1>
+        <p class="subtitle">Candidate setup and profile details, together. Activate a candidate to edit their profile and use them across Studio.</p>
       </div>
       <button id="add-candidate" class="button primary" type="button">+ Add candidate</button>
     </div>
 
-    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
-
-    <div class="columns">
+    <div class="candidate-workspace">
+      <aside class="candidate-directory" aria-label="Candidate directory and setup">
       <section class="panel" aria-labelledby="candidates-title">
         <div class="panel-heading">
           <h2 id="candidates-title">Candidates <span id="candidate-count" class="count">0</span></h2>
@@ -39,9 +166,8 @@
         </div>
       </section>
 
-      <aside class="panel setup-panel" aria-labelledby="setup-title">
-        <p class="eyebrow">GUIDED SETUP</p>
-        <h2 id="setup-title">What you need</h2>
+      <details class="panel setup-panel">
+        <summary>Legacy capture setup</summary>
         <ol class="setup-steps">
           <li><span class="step-number">1</span><span>Candidate name</span></li>
           <li><span class="step-number">2</span><span>Absolute path to their history folder</span></li>
@@ -51,11 +177,20 @@
         <div class="host-box">
           <span class="host-label">SHARED NATIVE HOST</span>
           <code>com.kevin.candidate_host</code>
-          <p>Test the history folder, save the profile, and select its radio button to make it active. Chrome assigns the extension ID; find it at <code>chrome://extensions</code>.</p>
+          <p>Test the history folder, save the candidate, and select its radio button to make it active. Chrome assigns the extension ID; find it at <code>chrome://extensions</code>.</p>
           <p id="registration-note">Saving a candidate updates native-host registration. Run a capture from the extension to verify the Chrome connection.</p>
         </div>
+      </details>
       </aside>
+      <section class="candidate-profile panel" aria-labelledby="profile-title">
+        <div class="profile-context-heading"><div><p class="eyebrow">ACTIVE CANDIDATE</p><label class="sr-only" for="profile-candidate">Active candidate</label><input id="profile-candidate" readonly><h2 id="profile-title">Candidate profile</h2></div><button id="edit-active-candidate" class="button secondary" type="button" disabled>Edit configuration</button></div>
+        <p class="field-help">Configuration holds the candidate name, capture settings and template assignments. Profile details below are saved separately and are never inferred from prompts.</p>
+        <dl id="candidate-defaults" class="candidate-defaults"></dl>
+        <div class="profile-save-bar"><span id="profile-dirty" role="status"></span><div class="toolbar"><button id="profile-reload" class="button subtle" type="button">Reload from disk</button><button id="profile-save" class="button primary" type="button" disabled>Save profile</button></div></div>
+        <form id="profile-editor" novalidate></form>
+      </section>
     </div>
+    </section>
   </main>
 
   <dialog id="candidate-dialog" aria-labelledby="dialog-title">
@@ -80,7 +215,8 @@
       <p id="folder-result" class="field-result" role="status" aria-live="polite"></p>
 
       <fieldset class="prompt-options">
-        <legend>Candidate prompt</legend>
+        <legend>Legacy capture prompt</legend>
+        <p class="field-help">Existing extension captures use this file. Choose the Studio AI prompt separately in the defaults below.</p>
         <div class="prompt-choices">
           <label><input id="prompt-choice-paste" type="radio" name="prompt-method" value="paste" checked> Paste text</label>
           <label><input id="prompt-choice-file" type="radio" name="prompt-method" value="file"> Use a .txt or .md file</label>
@@ -107,6 +243,12 @@
         <input id="set-active-after-save" type="checkbox">
         Set this candidate active after saving
       </label>
+
+      <fieldset class="template-assignments"><legend>Studio defaults for this candidate</legend>
+        <label for="candidate-prompt-assignment">Default AI prompt</label><select id="candidate-prompt-assignment"><option value="">Legacy prompt (existing file)</option></select>
+        <label for="candidate-document-assignment">Preferred document template</label><select id="candidate-document-assignment"><option value="">Classic (renderer default)</option></select>
+        <p id="candidate-assignment-status" class="field-help" role="status"></p>
+      </fieldset>
 
       <p id="form-error" class="field-result error" role="alert"></p>
       <div class="dialog-actions">

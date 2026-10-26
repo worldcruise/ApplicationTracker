@@ -1,0 +1,57 @@
+{
+  "resume": {
+    "company": "Example Hiring Company",
+    "title": "Systems Engineer",
+    "summary": "Develops reliable systems with a multidisciplinary team.",
+    "skills": [{ "Engineering": ["Testing", "Design"] }],
+    "experience": [{ "title": "Engineer", "company": "Example Employer", "sentences": ["Improved a synthetic test system."] }],
+    "education": [{ "degree": "Bachelor of Example Studies" }]
+  },
+  "job": {
+    "schemaVersion": 1,
+    "id": "job-one",
+    "candidateId": "candidate-one",
+    "jobDescription": "Original synthetic job description.\r\nNo appended prompt instructions.",
+    "company": "Example Hiring Company",
+    "sourceUrl": "https://example.test/jobs/one?source=test#description",
+    "createdAt": "2026-10-22T10:30:00Z",
+    "promptTemplate": { "id": "prompt-one", "version": 2 },
+    "documentTemplate": { "id": "document-one", "version": 1 }
+  },
+  "coverLetter": {
+    "schemaVersion": 1,
+    "candidateId": "candidate-one",
+    "jobId": "job-one",
+    "paragraphs": ["Dear hiring team,", "This is synthetic letter text.", "Sincerely, Example"]
+  },
+  "registry": {
+    "schemaVersion": 1,
+    "activeCandidateId": "candidate-one",
+    "candidates": [{
+      "id": "candidate-one", "name": "Alex Example", "extensionId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "historyFolder": "C:\\synthetic-unopened-history\\candidate-one",
+      "promptTemplate": "templates/candidate-one.txt"
+    }]
+  },
+  "profile": {
+    "schemaVersion": 1, "candidateId": "candidate-one",
+    "personal": {}, "contact": { "email": "alex@example.test" }, "address": {},
+    "workExperience": [{
+      "id": "work-one", "company": "Example Employer", "title": "Engineer",
+      "period": { "start": "2020-01", "current": true }, "address": { "city": "Example City" }, "highlights": []
+    }],
+    "education": [{
+      "id": "education-one", "university": "Example University", "degree": "Bachelor", "major": "Example Studies",
+      "period": { "start": "2015", "end": "2019" }, "address": {}
+    }],
+    "skills": [], "certifications": [], "customAnswers": {}, "preferences": {}
+  },
+  "documents": {
+    "schemaVersion": 1,
+    "templates": [{
+      "id": "document-one", "name": "Unimplemented fixture layout", "description": "Metadata only",
+      "layoutId": "future-layout", "version": 1, "supportedSettings": {}, "defaultSettings": {}
+    }]
+  },
+  "bindings": { "experience": ["work-one"], "education": ["education-one"] }
+}

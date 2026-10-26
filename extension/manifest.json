@@ -17,6 +17,9 @@
   "background": {
     "service_worker": "background.js"
   },
+  "externally_connectable": {
+    "matches": ["http://127.0.0.1/*"]
+  },
   "action": {
     "default_title": "Application Tracker candidate",
     "default_popup": "popup.html"
@@ -26,7 +29,7 @@
       "suggested_key": {
         "default": "Ctrl+Shift+F"
       },
-      "description": "Check and save the selected company for the active candidate"
+      "description": "Copy job description and URL, including the selected company when present"
     }
   }
 }

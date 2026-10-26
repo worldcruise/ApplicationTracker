@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Resume Tailoring Studio — File Access</title>
+  <link rel="stylesheet" href="studio.css">
+  <script src="studio.js" type="module"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">APPLICATION TRACKER</p>
+      <h1>Studio file access</h1>
+      <p>Connect your existing configuration and prompt files. This page works with the Python manager closed.</p>
+    </header>
+    <div id="notice" role="status" aria-live="polite" hidden></div>
+    <section class="panel" aria-labelledby="configuration-heading">
+      <h2 id="configuration-heading">Configuration folder</h2>
+      <p>Select the existing <code>config</code> folder containing <code>candidates.json</code>. Studio requests read/write permission for future editing; this page only reads your files.</p>
+      <div class="actions">
+        <button id="select-folder" type="button">Select Configuration Folder</button>
+        <button id="reconnect-folder" class="secondary" type="button" hidden>Reconnect Folder Access</button>
+        <button id="refresh" class="secondary" type="button" disabled>Refresh Configuration</button>
+      </div>
+      <p id="folder-status" role="status" aria-live="polite">Checking saved folder access…</p>
+      <p id="registry-status">Registry has not been loaded.</p>
+      <p id="optional-status" class="muted"></p>
+    </section>
+    <section class="panel" aria-labelledby="candidate-heading">
+      <h2 id="candidate-heading">Candidate prompt access</h2>
+      <p>External prompts need their own file grant. Linking associates the file you choose with the configured reference; it does not import or copy it. Browser access cannot independently verify its absolute path.</p>
+      <p id="candidate-empty" class="muted">Select or reconnect a configuration folder to load candidates.</p>
+      <div id="candidates" class="candidates"></div>
+    </section>
+    <footer>No candidate records or prompt bodies are saved by this page. Legacy capture remains available from the extension popup, context menu, and shortcut.</footer>
+  </main>
+</body>
+</html>

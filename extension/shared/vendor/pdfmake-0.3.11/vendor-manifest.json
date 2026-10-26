@@ -1,0 +1,15 @@
+{
+  "package": "pdfmake",
+  "version": "0.3.11",
+  "source": "https://registry.npmjs.org/pdfmake/0.3.11",
+  "tarball": "https://registry.npmjs.org/pdfmake/-/pdfmake-0.3.11.tgz",
+  "integrity": "sha512-Uc49J9hUMyuqJk+U+PxlpBpPr96A4HOOfesGx609EPr2ue82+5/Smq/KTAkEqh0/jUGSi1fumvqZ5yAWijJTJg==",
+  "shasum": "b4504d19b8f31fa5063dc1b847b060faa4f7c5bb",
+  "files": [
+    { "path": "pdfmake.min.js", "packagePath": "build/pdfmake.min.js", "bytes": 1053972, "sha256": "faaee53f8dcf48b0934553665809d8180e20e435b654f633df2f18f9dbdeaa88" },
+    { "path": "vfs_fonts.js", "packagePath": "build/vfs_fonts.js", "bytes": 854725, "sha256": "1483ed267fe00ad90a3834441b019d856dd41ed079b2614404b2fcef425db6fc" },
+    { "path": "LICENSE.pdfmake.txt", "packagePath": "LICENSE", "bytes": 1113, "sha256": "ab919430421c2e244dbb8694d70916eae16235b75c0ea07e9a6c67cd4265c954" },
+    { "path": "LICENSE.svg-to-pdfkit.txt", "packagePath": "src/3rd-party/svg-to-pdfkit/LICENSE", "bytes": 1093, "sha256": "97a9a454169e8bb54afa875ba1741ac77f2a3b8cfac57e06c7e54f4467776ed8" },
+    { "path": "LICENSE.Roboto.txt", "source": "https://raw.githubusercontent.com/googlefonts/roboto-classic/main/OFL.txt", "sha256": "061402327a96aadb0bfb694a960ed289ecd38d383e396243831ab81feb109c41" }
+  ]
+}
