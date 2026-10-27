@@ -22,7 +22,7 @@ from tracker_config.auth import AuthService
 UNSET = object()
 
 
-class AuthHttpTests(AuthFixture):
+class AuthHttpFixture(AuthFixture):
     def setUp(self):
         super().setUp()
         self.registry = self.directory / "candidates.json"
@@ -91,6 +91,8 @@ class AuthHttpTests(AuthFixture):
         finally:
             connection.close()
 
+
+class AuthHttpTests(AuthHttpFixture):
     def test_status_bootstraps_csrf_without_candidate_or_owner_details(self):
         original = Path.open
 
@@ -104,7 +106,7 @@ class AuthHttpTests(AuthFixture):
         self.assertEqual(status, 200)
         self.assertEqual(data, {"state": "ready", "csrfToken": app.SESSION_TOKEN,
                                "idleTimeoutSeconds": 1800, "absoluteTimeoutSeconds": 28800,
-                               "managerAuthorizationEnforced": False})
+                               "managerAuthorizationEnforced": True})
         self.assertEqual(headers["Cache-Control"], "no-store")
         self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
         self.assertNotIn("Set-Cookie", headers)
@@ -287,13 +289,15 @@ class AuthHttpTests(AuthFixture):
             self.assertEqual(self.request("GET", "/api/auth/status")[0], 503)
 
     def test_existing_manager_routes_keep_old_protections_and_studio_remains_accessible(self):
-        status, _, data = self.request("GET", "/api/state")
+        self.assertEqual(self.request("GET", "/api/state")[0], 401)
+        token, _, _ = self.login_http()
+        status, _, data = self.request("GET", "/api/state", token=token)
         self.assertEqual((status, data["sessionToken"], data["candidates"]), (200, app.SESSION_TOKEN, []))
         self.assertEqual(self.request("GET", "/api/state", headers={"Host": "attacker.test"})[0], 403)
         for headers in ({"Origin": "http://attacker.test"}, {"X-Tracker-Token": "wrong"}):
             self.assertEqual(self.request("POST", "/api/active", payload={"candidateId": "unknown"}, headers=headers)[0], 403)
-        self.assertEqual(self.request("GET", "/api/studio/state")[0], 200)
-        self.assertEqual(self.request("POST", "/api/active", payload={"candidateId": "unknown"})[0], 400)
+        self.assertEqual(self.request("GET", "/api/studio/state", token=token)[0], 200)
+        self.assertEqual(self.request("POST", "/api/active", payload={"candidateId": "unknown"}, token=token)[0], 400)
 
     def test_concurrent_real_http_logins_and_logouts_keep_sessions_separate(self):
         with ThreadPoolExecutor(max_workers=2) as pool:

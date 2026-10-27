@@ -525,3 +525,19 @@ body[data-page=extensions] #active-summary { display: none; }
 .extension-layout summary { font-size: 12px; }
 @media (max-width: 1000px) { .extension-layout { grid-template-columns: 1fr; } .extension-aside { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 650px) { .extension-overview, .extension-aside { grid-template-columns: 1fr; } .studio-page .extension-layout .panel { padding: 18px; } }
+/* Authentication starts closed in markup; generic assets contain no user data. */
+body:not([data-auth="authenticated"]) > .topbar,
+body:not([data-auth="authenticated"]) > main,
+body:not([data-auth="authenticated"]) > dialog { display: none !important; }
+.auth-gate { min-height: 100vh; display: grid; align-content: center; justify-items: center; gap: 20px; padding: 24px; }
+.auth-gate[hidden] { display: none; }
+.auth-brand { font-weight: 700; letter-spacing: .02em; }
+.auth-panel { width: min(100%, 440px); padding: 28px; }
+.auth-panel h1 { font-size: 25px; }
+.auth-panel form { display: grid; gap: 12px; }
+.auth-panel form[hidden] { display: none; }
+.auth-panel input { width: 100%; }
+.auth-panel button { margin-top: 12px; }
+.auth-panel pre, .auth-reconcile pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.auth-reconcile { margin-bottom: 16px; border-color: #d69e39; }
+.auth-reconcile details { margin: 12px 0; }

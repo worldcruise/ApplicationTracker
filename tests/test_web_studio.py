@@ -41,6 +41,7 @@ class WebStudioTests(regression.IsolatedApplicationTestCase):
         for name in ("send_response", "send_header", "end_headers", "send_error", "send_json", "log_error"):
             setattr(handler, name, Mock())
         handler.read_json = Mock(return_value=payload)
+        self.authorize_handler(handler)
         getattr(handler, "do_" + method)()
         return handler
 
@@ -187,10 +188,11 @@ class WebStudioTests(regression.IsolatedApplicationTestCase):
     def test_new_routes_preserve_host_origin_and_session_authorization(self):
         for headers in ({"Host": "attacker.test"}, {"Origin": "http://attacker.test"}, {"X-Tracker-Token": "wrong"}):
             handler = self.handler(self.profile_url(), "PUT", {"data": self.profile, "revision": None}, headers)
-            self.assertEqual(handler.send_json.call_args.args[0], 403)
+            handler.send_response.assert_called_once_with(403)
+            self.assertEqual(json.loads(handler.wfile.getvalue())["code"], "invalid-host" if "Host" in headers else "invalid-origin" if "Origin" in headers else "invalid-csrf")
             handler.read_json.assert_not_called()
         result = self.handler("/api/studio/state", headers={"Host": "attacker.test"})
-        self.assertEqual(result.send_json.call_args.args[0], 403)
+        result.send_response.assert_called_once_with(403)
 
     def test_catalog_stale_write_and_malformed_json_never_erase_catalog(self):
         first = self.prompt(); before = self.repos.prompts.path.read_bytes()
@@ -309,5 +311,5 @@ class WebStudioJavaScriptTests(unittest.TestCase):
         if not Path(node).is_file():
             self.skipTest("Node.js unavailable; no dependencies installed")
         with tempfile.TemporaryDirectory(prefix="studio-node-") as directory:
-            result = subprocess.run([node, "--test", str(ROOT / "tests/web-studio.test.mjs")], cwd=directory, text=True, capture_output=True, timeout=60)
+            result = subprocess.run([node, "--test", str(ROOT / "tests/web-studio.test.mjs"), str(ROOT / "tests/manager-auth.test.mjs")], cwd=directory, text=True, capture_output=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

@@ -8,8 +8,23 @@
   <script type="importmap">{"imports":{"/extension/shared/":"/shared/","/extension/studio/contracts.mjs":"/studio/contracts.mjs"}}</script>
   <script src="/app.js" type="module"></script>
 </head>
-<body>
-  <header class="topbar">
+<body data-auth="checking">
+  <section id="auth-gate" class="auth-gate" aria-labelledby="auth-title">
+    <div class="auth-brand">RS · Resume Tailoring Studio</div>
+    <div class="panel auth-panel">
+      <h1 id="auth-title">Checking authentication…</h1>
+      <p id="auth-message" role="status" aria-live="polite">Connecting to the local backend.</p>
+      <div id="auth-setup" hidden><p>Run this command from the project directory in an interactive terminal. Password entry is hidden.</p><pre>py -3.13 -B manager/owner.py init --username YOUR_OWNER_NAME</pre><p>No account is created by this page.</p></div>
+      <form id="auth-form" method="post" hidden>
+        <label for="auth-username">Username</label><input id="auth-username" autocomplete="username" required maxlength="64">
+        <label for="auth-password">Password</label><input id="auth-password" type="password" autocomplete="current-password" required maxlength="1024">
+        <button id="auth-sign-in" class="button primary" type="submit">Sign in</button>
+      </form>
+      <button id="auth-retry" class="button secondary" type="button" hidden>Retry connection</button>
+      <button id="auth-discard" class="button subtle" type="button" hidden>Discard drafts and sign out</button>
+    </div>
+  </section>
+  <header id="protected-header" class="topbar" inert>
     <div class="brand"><span class="brand-mark">RS</span> Resume Tailoring Studio</div>
     <nav class="studio-nav" aria-label="Main navigation">
       <button type="button" data-page="home" aria-current="page">Home</button>
@@ -19,10 +34,11 @@
       <button type="button" data-page="resume">Resume Studio</button>
       <button type="button" data-page="extensions">Extension Studio</button>
     </nav>
-    <div class="header-actions"><button id="studio-refresh" class="button subtle" type="button" title="Reload configuration and revisions">Refresh</button><div id="active-summary" class="active-summary">No active candidate</div></div>
+    <div class="header-actions"><span id="auth-owner"></span><button id="auth-sign-out" class="button subtle" type="button">Sign out</button><button id="studio-refresh" class="button subtle" type="button" title="Reload configuration and revisions">Refresh</button><div id="active-summary" class="active-summary">No active candidate</div></div>
   </header>
 
-  <main class="page">
+  <main id="protected-workspace" class="page" inert>
+    <section id="auth-reconcile" class="panel auth-reconcile" hidden aria-labelledby="auth-reconcile-title"><h2 id="auth-reconcile-title">Saved records changed while you were away</h2><p>Review the saved values and your drafts. Nothing has been written. Restoring applies your changed fields to the reviewed version; newer saves still require revision checks.</p><div id="auth-conflicts"></div><button id="auth-keep-drafts" class="button primary" type="button">Restore reviewed drafts</button><button id="auth-use-latest" class="button secondary" type="button">Discard drafts and use saved values</button></section>
     <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
     <div id="studio-status" class="notice" role="status" aria-live="polite" hidden></div>
     <section id="page-home" class="studio-page" aria-labelledby="home-title">

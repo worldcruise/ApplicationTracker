@@ -157,7 +157,7 @@ class Element {
   remove() {}
   click() { this.document.downloads++; }
 }
-async function uiFixture(t, exists = true, legacy = false, profileData = fixture.profile) {
+async function uiFixture(t, exists = true, legacy = false, profileData = fixture.profile, authOptions = {}) {
   const html = await readFile(new URL("../manager/ui/index.html", import.meta.url), "utf8");
   const document = { ids: new Map(), downloads: 0, createElement(tag) { return new Element(tag, this); }, getElementById(id) { const element = this.ids.get(id); assert.ok(element, `Missing DOM ID ${id}`); return element; } };
   document.body = document.createElement("body");
@@ -167,6 +167,7 @@ async function uiFixture(t, exists = true, legacy = false, profileData = fixture
   document.querySelectorAll = selector => selector === "[data-page]" ? nav : [...document.ids.values()].filter(element => element.id.startsWith("page-"));
   const listeners = {}, clipboard = []; let confirm = true;
   const window = { confirm: () => confirm, addEventListener(name, action) { (listeners[name] ??= []).push(action); } };
+  if (authOptions.pathname) window.location = { pathname: authOptions.pathname, search: "", hash: "" };
   const previous = { document: globalThis.document, window: globalThis.window, fetch: globalThis.fetch, chrome: globalThis.chrome, navigator: Object.getOwnPropertyDescriptor(globalThis, "navigator") };
   globalThis.document = document; globalThis.window = window; Object.defineProperty(globalThis, "navigator", { configurable: true, value: { clipboard: { async writeText(text) { clipboard.push(text); } } } });
   t.after(() => { for (const callback of listeners.pagehide || []) callback(); globalThis.document = previous.document; globalThis.window = previous.window; globalThis.fetch = previous.fetch; if (previous.chrome === undefined) delete globalThis.chrome; else globalThis.chrome = previous.chrome; if (previous.navigator) Object.defineProperty(globalThis, "navigator", previous.navigator); else delete globalThis.navigator; });
@@ -174,10 +175,17 @@ async function uiFixture(t, exists = true, legacy = false, profileData = fixture
   state.registry.data.futureRoot = { preserve: true };
   state.documentCatalog = { data: { schemaVersion: 1, templates: [] }, revision: null };
   let savedProfile = { data: clone(profileData), revision: exists ? "profile-1" : null, exists };
-  const calls = []; let conflict = false, catalogFailure = false, integrationFailure = false, integrationGate, writeGate;
+  const calls = []; let conflict = false, catalogFailure = false, integrationFailure = false, integrationGate, writeGate, authenticated = authOptions.authenticated !== false;
   const extensionState = { preferences: { data: { schemaVersion: 1, setupPage: "file-access", confirmSetupCopy: true }, revision: null }, device: { data: { schemaVersion: 1, label: "", extensionId: "", probeTimeoutMs: 4000 }, revision: null }, diagnostics: { backend: "reachable", package: { status: "available", name: "Synthetic extension", version: "0.5.0", diagnosticBridge: true }, browserConnection: "not-checked", nativeHost: "not-checked", perOperationCapture: "pending", bidFolderSaving: "pending" } };
   const api = async (path, options = {}) => {
     calls.push({ path, ...clone(options) });
+    if (path === "/api/auth/status") return { state: "ready", csrfToken: "synthetic-token", managerAuthorizationEnforced: true };
+    if (path === "/api/auth/login") authenticated = true;
+    if (["/api/auth/session", "/api/auth/activity", "/api/auth/login"].includes(path)) {
+      if (!authenticated) { const error = new Error("Sign in required"); error.status = 401; error.code = "authentication-required"; throw error; }
+      return { authenticated: true, user: { id: "9".repeat(32), username: "synthetic-owner", role: "owner" }, session: { idleRemainingSeconds: 1800, absoluteRemainingSeconds: 28800 } };
+    }
+    if (path === "/api/auth/logout") { authenticated = false; return { authenticated: false }; }
     if (catalogFailure && path === "/api/studio/state") throw new Error("Malformed managed catalog");
     if (integrationFailure && path === "/api/studio/extension") throw new Error("Synthetic settings failure");
     if (options.method) {
@@ -201,10 +209,13 @@ async function uiFixture(t, exists = true, legacy = false, profileData = fixture
   };
   const renders = []; let studio;
   if (legacy) {
-    globalThis.fetch = async (path, options) => ({ ok: true, json: async () => api(path, { ...options, method: options.method === "GET" ? undefined : options.method, body: options.body ? JSON.parse(options.body) : undefined }) });
-    await import(`../manager/ui/app.js?candidate-ui-test=${Date.now()}`); await pause(10);
+    globalThis.fetch = async (path, options) => {
+      try { const value = await api(path, { ...options, method: options.method === "GET" ? undefined : options.method, body: options.body ? JSON.parse(options.body) : undefined }); return { ok: true, status: 200, json: async () => value }; }
+      catch (error) { return { ok: false, status: error.status || 400, json: async () => ({ error: error.message, code: error.code }) }; }
+    };
+    const module = await import(`../manager/ui/app.js?candidate-ui-test=${Date.now()}`); document.auth = module.authentication; t.after(() => module.authentication.dispose()); await pause(10);
   } else { studio = initializeStudio({ api, refreshCandidates: async () => {}, renderPdf: async input => { renders.push(input); return pdf(); } }); await studio.candidatesChanged(state.registry.data); }
-  return { document, state, extensionState, calls, clipboard, renders, listeners, studio, setConfirm(value) { confirm = value; }, setConflict(value) { conflict = value; }, setCatalogFailure(value) { catalogFailure = value; }, setIntegrationFailure(value) { integrationFailure = value; }, setIntegrationGate(value) { integrationGate = value; }, setWriteGate(value) { writeGate = value; }, $: id => document.getElementById(id), async navigate(page) { await nav.find(element => element.dataset.page === page).fire("click"); } };
+  return { document, state, extensionState, calls, clipboard, renders, listeners, studio, setSavedProfile(value) { savedProfile = clone(value); }, setConfirm(value) { confirm = value; }, setConflict(value) { conflict = value; }, setCatalogFailure(value) { catalogFailure = value; }, setIntegrationFailure(value) { integrationFailure = value; }, setIntegrationGate(value) { integrationGate = value; }, setWriteGate(value) { writeGate = value; }, $: id => document.getElementById(id), async navigate(page) { await nav.find(element => element.dataset.page === page).fire("click"); } };
 }
 test("Home loads active-candidate information without any configuration writes", async t => {
   const ui = await uiFixture(t); assert.equal(ui.calls.some(call => call.method), false); assert.ok(ui.$("home-content").children.some(element => element.textContent === "Alex Example"));
@@ -688,4 +699,97 @@ test("Save is disabled during pending requests and duplicate submissions do not 
   const savingProfile = ui.$("profile-save").fire("click"); assert.equal(ui.$("profile-save").disabled, true);
   await ui.$("profile-save").fire("click"); assert.equal(ui.calls.filter(call => call.method).length, 2);
   release(); await savingProfile; ui.setWriteGate(null); assert.equal(ui.$("profile-save").disabled, true);
+});
+
+test("profile suspension restores same-revision drafts in memory without a write", async t => {
+  const ui = await uiFixture(t); await ui.navigate("candidates");
+  ui.$("profile-contact-phone").value = "555-0199"; await ui.$("profile-contact-phone").fire("input");
+  const draft = ui.studio.suspend(); const result = await ui.studio.resume(draft);
+  assert.equal(result.conflicts.length, 0); assert.equal(ui.$("profile-contact-phone").value, "555-0199");
+  assert.equal(ui.$("profile-save").disabled, false); assert.equal(ui.calls.some(call => call.method), false);
+});
+test("profile revision conflicts require review and preserve newer unknown fields", async t => {
+  const ui = await uiFixture(t); await ui.navigate("candidates");
+  ui.$("profile-contact-phone").value = "555-0199"; await ui.$("profile-contact-phone").fire("input");
+  const draft = ui.studio.suspend(), latest = clone(fixture.profile); latest.contact.phone = "555-0188"; latest.future = { preserve: "new server value" };
+  ui.setSavedProfile({ data: latest, revision: "profile-new", exists: true });
+  const review = await ui.studio.resume(draft); assert.ok(review.conflicts.some(item => item.label === "Profile"));
+  assert.equal(ui.$("profile-save").disabled, true); assert.equal(ui.$("profile-contact-phone").value, "555-0188");
+  const restored = await ui.studio.resume(draft, review.approval); assert.equal(restored.conflicts.length, 0);
+  assert.equal(ui.calls.some(call => call.method), false); assert.equal(ui.$("profile-contact-phone").value, "555-0199");
+  await ui.$("profile-save").fire("click"); const saved = ui.calls.filter(call => call.method).at(-1);
+  assert.equal(saved.body.revision, "profile-new"); assert.equal(saved.body.data.future.preserve, "new server value");
+});
+test("a revision changed again after review cannot be accepted with stale approval", async t => {
+  const ui = await uiFixture(t); await ui.navigate("candidates");
+  ui.$("profile-contact-phone").value = "555-0199"; await ui.$("profile-contact-phone").fire("input"); const draft = ui.studio.suspend();
+  ui.setSavedProfile({ data: clone(fixture.profile), revision: "profile-2", exists: true }); const review = await ui.studio.resume(draft);
+  ui.setSavedProfile({ data: clone(fixture.profile), revision: "profile-3", exists: true }); const result = await ui.studio.resume(draft, review.approval);
+  assert.ok(result.conflicts.length); assert.equal(ui.$("profile-save").disabled, true); assert.equal(ui.calls.some(call => call.method), false);
+});
+test("removed candidates cannot restore a profile draft to another context", async t => {
+  const ui = await uiFixture(t); await ui.navigate("candidates"); ui.$("profile-contact-phone").value = "555-0199"; await ui.$("profile-contact-phone").fire("input");
+  const draft = ui.studio.suspend(); ui.state.registry.data.candidates = []; ui.state.registry.data.activeCandidateId = null;
+  const result = await ui.studio.resume(draft); assert.equal(result.unavailable, true); assert.match(ui.$("profile-editor").children[0].textContent, /No authorized candidate/);
+  assert.equal(ui.calls.some(call => call.method), false);
+});
+test("new prompt drafts retain complete text and are never saved during restoration", async t => {
+  const ui = await uiFixture(t); await ui.navigate("prompts"); await ui.$("prompt-new").fire("click");
+  ui.$("prompt-name").value = "Unsaved prompt"; const body = "Complete prompt\r\nKeep $& punctuation.\n";
+  await ui.$("prompt-body").fire("paste", { clipboardData: { getData: () => body } }); await ui.$("prompt-editor").fire("input");
+  const result = await ui.studio.resume(ui.studio.suspend()); assert.equal(result.conflicts.length, 0);
+  assert.equal(ui.$("prompt-name").value, "Unsaved prompt"); assert.equal(ui.calls.some(call => call.method), false);
+  await ui.$("prompt-editor").fire("submit"); assert.equal(ui.calls.filter(call => call.method).at(-1).body.data.body, body);
+});
+test("document configuration drafts survive suspension without candidate preference writes", async t => {
+  const ui = await uiFixture(t); await ui.navigate("documents"); await ui.$("document-new").fire("click");
+  ui.$("document-name").value = "Unsaved design"; await ui.$("document-editor").fire("input");
+  const result = await ui.studio.resume(ui.studio.suspend()); assert.equal(result.conflicts.length, 0);
+  assert.equal(ui.$("document-name").value, "Unsaved design"); assert.equal(ui.calls.some(call => call.method), false);
+});
+test("resume suspension revokes the preview and restores editor context without downloading", async t => {
+  const ui = await uiFixture(t); await ui.navigate("resume"); ui.$("resume-json").value = JSON.stringify(fixture.resume);
+  await ui.$("resume-json").fire("input"); await pause(400);
+  ui.$("binding-experience-0").value = "work-one"; await ui.$("binding-experience-0").fire("change"); ui.$("binding-education-0").value = "education-one"; await ui.$("binding-education-0").fire("change"); await pause(400);
+  assert.equal(ui.$("resume-download").disabled, false);
+  const draft = ui.studio.suspend(); assert.equal(ui.$("resume-download").disabled, true); assert.equal(ui.$("pdf-preview").hidden, true);
+  const result = await ui.studio.resume(draft); assert.equal(result.conflicts.length, 0); assert.equal(ui.$("resume-json").value, JSON.stringify(fixture.resume));
+  await pause(400); assert.equal(ui.$("resume-download").disabled, false); assert.equal(ui.document.downloads, 0); assert.equal(ui.calls.some(call => call.method), false);
+});
+test("extension drafts reconcile each scope against current saved settings", async t => {
+  const ui = await uiFixture(t); await ui.navigate("extensions"); ui.$("extension-device-label").value = "Draft laptop"; await ui.$("extension-device-form").fire("input");
+  const draft = ui.studio.suspend(); ui.extensionState.device = { data: { ...ui.extensionState.device.data, extensionId: "b".repeat(32) }, revision: "device-new" };
+  const review = await ui.studio.resume(draft); assert.ok(review.conflicts.some(item => item.label === "Extension device"));
+  await ui.studio.resume(draft, review.approval); assert.equal(ui.$("extension-device-label").value, "Draft laptop"); assert.equal(ui.$("extension-id-setting").value, "b".repeat(32));
+  assert.equal(ui.calls.some(call => call.method), false);
+});
+test("actual app controller gates and restores candidate edits without activation or writes", async t => {
+  const ui = await uiFixture(t, true, true); await ui.navigate("candidates"); await ui.$("candidate-list").children[0].children[1].children[0].fire("click");
+  // The small adapter indexes static elements; link this form field for raw-draft traversal.
+  ui.$("candidate-form").append(ui.$("candidate-name"));
+  ui.$("candidate-name").value = " Draft candidate name "; await ui.$("candidate-name").fire("input");
+  ui.document.auth.lock("expired", "Sign in again"); assert.equal(ui.document.body.dataset.auth, "expired"); assert.equal(ui.$("candidate-dialog").open, false);
+  let warned = false;
+  for (const callback of ui.listeners.beforeunload) callback({ preventDefault() { warned = true; } });
+  assert.equal(warned, true);
+  await ui.document.auth.login("synthetic-owner", "synthetic password");
+  assert.equal(ui.document.body.dataset.auth, "authenticated"); assert.equal(ui.$("candidate-name").value, " Draft candidate name "); assert.equal(ui.$("candidate-dialog").open, true);
+  assert.equal(ui.calls.some(call => call.method && !call.path.startsWith("/api/auth/")), false);
+});
+
+test("direct Extension Studio entry issues no business request until login is verified", async t => {
+  const ui = await uiFixture(t, true, true, fixture.profile, { authenticated: false, pathname: "/extension-studio" });
+  assert.equal(ui.document.body.dataset.auth, "login"); assert.equal(ui.$("protected-workspace").inert, true);
+  assert.deepEqual(ui.calls.map(call => call.path), ["/api/auth/status", "/api/auth/session"]);
+  await ui.document.auth.login("synthetic-owner", "synthetic password");
+  assert.equal(ui.document.body.dataset.auth, "authenticated"); assert.equal(ui.$("protected-workspace").inert, false);
+  assert.equal(ui.$("extension-backend-status").textContent, "Backend reached"); assert.equal(ui.calls.some(call => call.path === "/api/active"), false);
+});
+test("actual app logout warns, clears drafts and returns to the login gate", async t => {
+  const ui = await uiFixture(t, true, true); await ui.navigate("candidates");
+  ui.$("profile-contact-phone").value = "555-0199"; await ui.$("profile-contact-phone").fire("input");
+  ui.setConfirm(false); assert.equal(await ui.document.auth.logout(), false); assert.equal(ui.document.body.dataset.auth, "authenticated");
+  ui.setConfirm(true); assert.equal(await ui.document.auth.logout(), true); assert.equal(ui.document.body.dataset.auth, "login");
+  assert.equal(ui.$("candidate-list").children.length, 0); assert.equal(ui.$("profile-editor").children.length, 0); assert.equal(ui.$("auth-owner").textContent, "");
+  assert.equal(ui.$("protected-workspace").inert, true); await assert.rejects(ui.document.auth.api("/api/state"), error => error.authHandled);
 });

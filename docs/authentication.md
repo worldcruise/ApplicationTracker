@@ -1,10 +1,11 @@
-# UI-C2B: Backend owner authentication and sessions
+# Backend owner authentication and sessions
 
-The authentication service and five HTTP endpoints are implemented. **The overall
-manager is not yet login-protected.** Existing Studio APIs retain their existing
-Host/Origin/process-token protection until the coordinated UI-C3 authorization
-rollout. No frontend login, browser pairing, extension binding or activity polling
-is added here. No real owner account is initialized automatically.
+The UI-C2 authentication service and five HTTP endpoints are implemented. UI-C3B
+now requires a verified owner session on every manager business API and integrates
+the web setup/login gate. See [manager-authorization.md](manager-authorization.md)
+for the route inventory, frontend lifecycle and verification. Host/Origin/CSRF
+protections remain in force. Browser pairing and extension login remain deferred.
+No real owner account is initialized automatically.
 
 ## Components and storage
 
@@ -109,14 +110,15 @@ the response rather than interpreting leftover bytes as another request.
   "csrfToken": "<existing process request token>",
   "idleTimeoutSeconds": 1800,
   "absoluteTimeoutSeconds": 28800,
-  "managerAuthorizationEnforced": false
+  "managerAuthorizationEnforced": true
 }
 ```
 
 `state` is `ready`, `setup-required` or `unavailable`. No account name, candidate
 record, session credential or security document is returned. Status does not
 renew a session. Its bootstrap avoids depending on the candidate-bearing
-`/api/state` endpoint before login during the future UI-C3 rollout.
+`/api/state` endpoint before login. The frontend refuses to initialize against a
+backend reporting that owner authorization is not enforced.
 
 ### Login and authenticated metadata
 
@@ -145,7 +147,9 @@ HTTP 200 login success sets a cookie and returns this safe projection:
 `GET /api/auth/session` reads the owner cookie and returns the same shape with
 remaining times. It **does not** renew idle time. `POST /api/auth/activity` accepts
 exactly `{}`, validates the cookie, renews idle time and returns this shape without
-extending the absolute lifetime. There is no frontend polling integration yet.
+extending the absolute lifetime. The web controller renews only after trusted user
+input while focused/visible, at most once a minute. Its separate session-status
+checks do not renew idle time; there is no activity heartbeat.
 
 The backend derives the owner ID from verified credentials/session state. Client
 `user_id`, `candidate_id`, generation, credential-path or arbitrary input fields
@@ -201,8 +205,8 @@ not be exposed to the LAN or reused for remote computers. See the primary
 and [RFC 6265 section 8.5](https://www.rfc-editor.org/rfc/rfc6265#section-8.5).
 
 The current production launcher still selects a random loopback port. The fixed
-127.0.0.1:8765 transition, with no fallback, belongs to UI-C3. A fixed port will not
-by itself create cookie isolation from other loopback services.
+127.0.0.1:8765 transition, with no fallback, remains a separate deferred unit.
+A fixed port will not by itself create cookie isolation from other loopback services.
 
 ## Verification and rollout
 
@@ -219,23 +223,24 @@ reset during verification, concurrent verification limits and separate sessions.
 Browser cookie acceptance, JavaScript HttpOnly isolation and cookie restoration
 have not been manually verified in Chrome.
 
-Verified on Windows with Python 3.13 and Node.js 24.22.0: 25 authentication-service
-tests and 24 actual loopback HTTP tests pass; the complete suites pass 217 Python
-tests and 153 JavaScript tests. Existing owner-storage tests remain included.
+UI-C2 verified 25 authentication-service tests and 24 actual loopback HTTP tests.
+UI-C3B adds a five-test HTTP authorization matrix covering all 20 business
+operations, plus frontend auth/draft tests. The complete result and commands are
+in [manager-authorization.md](manager-authorization.md). Existing owner-storage
+tests remain included.
 
 Safe commands from the repository root:
 
 ```powershell
 & 'C:\Users\Honey\AppData\Local\Programs\Python\Python313\python.exe' -B -m unittest discover -s tests -p 'test_auth*.py' -v
 & 'C:\Users\Honey\AppData\Local\Programs\Python\Python313\python.exe' -B -m unittest discover -s tests -v
-& 'C:\Program Files\nodejs\node.exe' --test --test-reporter=spec tests/extension-access.test.mjs tests/resume-contract.test.mjs tests/pdf-renderer.test.mjs tests/web-studio.test.mjs tests/hotkey.test.mjs
+& 'C:\Program Files\nodejs\node.exe' --test --test-reporter=spec tests/extension-access.test.mjs tests/resume-contract.test.mjs tests/pdf-renderer.test.mjs tests/web-studio.test.mjs tests/hotkey.test.mjs tests/manager-auth.test.mjs
 git diff --check
 ```
 
-UI-C3 must add the web login gate and enforce verified owner sessions on all
-sensitive existing APIs together, preserving CSRF, revision checks and unsaved
-drafts. There must be no missing-owner anonymous fallback. Public bootstrap/static
-assets must remain narrowly scoped. This checkpoint does not claim authorization
-of candidate data or ownership mapping for future users. Legacy Native Messaging
-is separate and is not secured by owner login. Pairing, extension UI and the
-clipboard-only hotkey are unchanged and outside UI-C2.
+UI-C3B enforces owner sessions on candidate data and all other manager business
+APIs, preserving CSRF and repository revision checks. The explicit MVP policy
+grants the single verified installation owner access to its registry; multi-user
+ownership mapping is not implemented. Missing-owner and malformed-storage states
+fail closed. Legacy Native Messaging is separate and is not secured by owner
+login. Pairing, extension UI and the clipboard-only hotkey are unchanged.

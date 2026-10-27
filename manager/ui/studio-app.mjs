@@ -3,8 +3,9 @@ import { validateProfile } from "../../extension/studio/contracts.mjs";
 import { renderResumePdfBlob } from "../../extension/shared/resume-renderer.mjs";
 import { getBuiltInDocumentTemplates, validateDocumentSettings } from "../../extension/shared/document-settings.mjs";
 import { initializeExtensionStudio } from "./extension-studio.mjs";
+import { captureFields, restoreFields, mergeDraft } from "./auth.mjs";
 
-export function initializeStudio({ api, editCandidate, renderPdf = renderResumePdfBlob }) {
+export function initializeStudio({ api, editCandidate, renderPdf = renderResumePdfBlob, authorize = action => action() }) {
   const $ = id => document.getElementById(id);
   const node = (tag, text = "", cls = "") => { const element = document.createElement(tag); element.textContent = text; element.className = cls; return element; };
   const button = (label, action, cls = "button secondary") => { const element = node("button", label, cls); element.type = "button"; element.addEventListener("click", () => run(action)); return element; };
@@ -15,7 +16,8 @@ export function initializeStudio({ api, editCandidate, renderPdf = renderResumeP
   let profileFormBaseline = null, promptFormBaseline = null, documentFormBaseline = null, promptDraft = false, documentDraft = false;
   const registrySignature = registry => JSON.stringify({ schemaVersion: registry.schemaVersion, activeCandidateId: registry.activeCandidateId, candidates: registry.candidates });
   const status = (message, error = false) => { $("studio-status").hidden = !message; $("studio-status").textContent = message; $("studio-status").className = `notice ${error ? "error" : "success"}`; };
-  const run = async action => { try { await action(); } catch (error) { status(error.message, true); } };
+  let suspended = false, restoringDraft = false;
+  const run = async action => { if (suspended) return; try { await action(); } catch (error) { if (!error.authHandled && !suspended) status(error.message, true); } };
   const current = () => state?.registry.data.candidates.find(item => item.id === selectedCandidate);
   const supportedDocument = item => ["classic", "modern"].includes(item.layoutId) && (getBuiltInDocumentTemplates().some(builtin => builtin.id === item.id) ? item.version === 1 : item.rendererVersion === 1);
   const documents = () => (state?.documents.templates || []).filter(item => supportedDocument(item) && !item.archived);
@@ -27,9 +29,10 @@ export function initializeStudio({ api, editCandidate, renderPdf = renderResumeP
     if (url && inline) frame.src = `${url}#navpanes=0&view=Fit`; else frame.removeAttribute("src");
     $("resume-download").disabled = !url; $("preview-status").textContent = url && !inline ? "Inline PDF viewing is disabled in this browser. Enable it or explicitly click Download PDF." : message;
   }});
-  const extensionWorkspace = initializeExtensionStudio({ api });
+  const extensionWorkspace = initializeExtensionStudio({ api, authorize });
   const dirty = () => profileDirty || promptDirty || documentDirty || extensionWorkspace.dirty;
   function allowContextChange() {
+    if (restoringDraft) return true;
     if (saving || extensionWorkspace.saving) { status("Wait for the current save to finish.", true); return false; }
     if (dirty() && !window.confirm("Discard unsaved profile, library or extension settings changes?")) return false;
     if (extensionWorkspace.dirty) extensionWorkspace.discard();
@@ -460,6 +463,7 @@ export function initializeStudio({ api, editCandidate, renderPdf = renderResumeP
     }
   }
   async function copy(text) {
+    await authorize(() => {});
     if (!navigator.clipboard?.writeText) throw new Error("Clipboard access is unavailable. Use a supported browser on the local manager origin.");
     try { await navigator.clipboard.writeText(text); } catch { throw new Error("Clipboard write failed. Check browser permissions and try the button again."); }
   }
@@ -508,15 +512,95 @@ export function initializeStudio({ api, editCandidate, renderPdf = renderResumeP
     $("assistant-prompt").value = assigned.body; $("resume-prompt-source").textContent = assigned.name;
     await copy(composePrompt(assigned.body, jd)); status(`Copied ${assigned.name} with the original JD. The JD input is unchanged.`);
   }));
-  $("resume-download").addEventListener("click", () => run(() => {
+  $("resume-download").addEventListener("click", () => run(() => authorize(() => {
     const resume = contracts.parseResumeResponse($("resume-json").value);
     preview.download(safePdfFilename(current()?.name, resume.company), document);
     status("Download requested. Check your browser downloads for completion or a blocked download.");
-  }));
+  })));
   window.addEventListener("beforeunload", event => { if (dirty() || saving || extensionWorkspace.saving || $("resume-json").value || $("resume-jd").value) { event.preventDefault(); event.returnValue = ""; } });
   window.addEventListener("pagehide", () => { clearTimeout(renderTimer); preview.clear(); extensionWorkspace.leave(); });
   if (window.location?.pathname === "/extension-studio") void run(() => navigate("extensions"));
-  return { allowContextChange, candidateOptions: () => api("/api/studio/state"), async candidatesChanged(registry) {
+  function suspend() {
+    const draft = { page, selectedCandidate,
+      profile: profileDirty && profile ? { snapshot: structuredClone(profile), base: structuredClone(profileBaseline), fields: captureFields($("profile-editor")) } : null,
+      prompt: promptDirty ? { record: structuredClone(editingPrompt), fields: promptFields(), revision: state?.prompts.revision, isNew: promptDraft, form: captureFields($("prompt-editor")) } : null,
+      document: documentDirty ? { record: structuredClone(editingDocument), fields: structuredClone(documentFields()), revision: state?.documentCatalog.revision, isNew: documentDraft } : null,
+      resume: page === "resume" ? { json: $("resume-json").value, jd: $("resume-jd").value, templateId: $("resume-template").value, overrides: structuredClone(overrides), bindings: structuredClone(bindings) } : null,
+      extension: extensionWorkspace.suspend() };
+    suspended = true; profileEpoch++; refreshEpoch++; homeEpoch++; copyEpoch++; promptEpoch++;
+    clearTimeout(renderTimer); preview.clear("Sign in again before viewing or downloading.");
+    $("resume-copy-prompt").disabled = $("resume-copy-json").disabled = true;
+    return draft;
+  }
+  function clear() {
+    if (!suspended) suspend();
+    state = profile = profileBaseline = editingPrompt = editingDocument = null;
+    page = "home"; document.body.dataset.page = page;
+    profileDirty = promptDirty = documentDirty = saving = false; knownCandidates = ""; selectedCandidate = null;
+    profileFormBaseline = promptFormBaseline = documentFormBaseline = null; promptBodyDraft = ""; documentDefaults = {};
+    clearResume(); extensionWorkspace.clear();
+    for (const id of ["profile-editor", "prompt-list", "document-gallery", "home-content", "home-tools", "candidate-defaults", "resume-thumbnails", "resume-template", "resume-settings"]) $(id).replaceChildren();
+    for (const id of ["profile-candidate", "resume-candidate"]) $(id).value = "";
+    $("resume-preference").textContent = "";
+    for (const id of ["prompt-editor", "document-editor"]) { for (const field of $(id).querySelectorAll("input, textarea, select")) { field.value = ""; field.checked = false; } $(id).hidden = true; }
+    status(""); saveButtons();
+  }
+  async function resume(draft, approval = null) {
+    suspended = false;
+    state = await api("/api/studio/state");
+    page = draft?.page || (window.location?.pathname === "/extension-studio" ? "extensions" : "home"); document.body.dataset.page = page;
+    for (const element of document.querySelectorAll(".studio-page")) element.hidden = element.id !== `page-${page}`;
+    for (const element of document.querySelectorAll("[data-page]")) { if (element.dataset.page === page) element.setAttribute("aria-current", "page"); else element.removeAttribute("aria-current"); }
+    $("resume-copy-json").disabled = false;
+    selectedCandidate = draft?.selectedCandidate && state.registry.data.candidates.some(item => item.id === draft.selectedCandidate) ? draft.selectedCandidate : state.registry.data.activeCandidateId;
+    syncCandidateSelects(); renderPrompts(); renderDocuments();
+    const candidateExists = !draft?.selectedCandidate || selectedCandidate === draft.selectedCandidate;
+    if (page === "home") await renderHome();
+    if (selectedCandidate) await loadProfile();
+    else { profile = profileBaseline = null; profileDirty = false; profileFormBaseline = null; $("profile-editor").replaceChildren(node("p", "No authorized candidate is selected.")); }
+    const extension = await extensionWorkspace.resume(draft?.extension, approval?.extension);
+    const key = JSON.stringify([state.registry.revision, state.prompts.revision, state.documentCatalog.revision, profile?.revision, extension.key]);
+    const reviewed = approval?.key === key;
+    const conflicts = [...extension.conflicts];
+    if (!candidateExists && (draft?.profile || draft?.resume)) conflicts.push({ label: "Candidate is no longer available; its draft cannot be restored", unavailable: true });
+    if (draft?.profile && candidateExists && draft.profile.snapshot.revision !== profile?.revision) conflicts.push({ label: "Profile", saved: profile?.data, draft: draft.profile.snapshot.data });
+    if (draft?.prompt && draft.prompt.revision !== state.prompts.revision) conflicts.push({ label: "Prompt library", saved: state.prompts.data, draft: draft.prompt.fields });
+    if (draft?.document && draft.document.revision !== state.documentCatalog.revision) conflicts.push({ label: "Document library", saved: state.documentCatalog.data, draft: draft.document.fields });
+    if (draft?.prompt?.record?.id && !state.prompts.data.templates.some(item => item.id === draft.prompt.record.id)) conflicts.push({ label: "Edited prompt was removed", unavailable: true });
+    if (draft?.document?.record?.id && !state.documentCatalog.data.templates.some(item => item.id === draft.document.record.id)) conflicts.push({ label: "Edited document configuration was removed", unavailable: true });
+    if (draft?.resume && !documents().some(item => item.id === draft.resume.templateId)) conflicts.push({ label: "Selected document configuration is no longer available", unavailable: true });
+    if (conflicts.length && !reviewed) {
+      profileDirty = promptDirty = documentDirty = false; $("prompt-editor").hidden = $("document-editor").hidden = true; saveButtons();
+      return { conflicts, approval: { key, extension: extension.approval }, unavailable: conflicts.some(item => item.unavailable) };
+    }
+    if (conflicts.some(item => item.unavailable)) return { conflicts, unavailable: true };
+    restoringDraft = true;
+    try {
+    if (draft?.profile) {
+      profile.data = mergeDraft(draft.profile.base, draft.profile.snapshot.data, profile.data);
+      renderProfile(); restoreFields($("profile-editor"), draft.profile.fields.filter(field => draft.profile.snapshot.revision === profile.revision || field.customMessage)); markProfile();
+    }
+    if (draft?.prompt) {
+      const currentRecord = state.prompts.data.templates.find(item => item.id === draft.prompt.record?.id);
+      openPrompt(currentRecord || null);
+      const fields = mergeDraft(draft.prompt.record || {}, draft.prompt.fields, currentRecord || {});
+      for (const name of ["name", "description", "body", "category"]) $("prompt-" + name).value = fields[name] || "";
+      $("prompt-default").checked = fields.isDefault; $("prompt-archived").checked = fields.archived;
+      promptBodyDraft = fields.body || ""; promptDraft = draft.prompt.isNew; markPrompt();
+    }
+    if (draft?.document) {
+      const currentRecord = state.documentCatalog.data.templates.find(item => item.id === draft.document.record?.id);
+      openDocument(currentRecord || null);
+      const fields = mergeDraft(draft.document.record || {}, draft.document.fields, currentRecord || {});
+      for (const name of ["name", "description", "layout"]) $("document-" + name).value = fields[name === "layout" ? "layoutId" : name] || "";
+      $("document-archived").checked = fields.archived; documentDefaults = fields.defaultSettings || {}; documentDraft = draft.document.isNew; renderDocumentSettings(); markDocument();
+    }
+    if (draft?.resume && candidateExists) { await prepareResume(); $("resume-json").value = draft.resume.json; $("resume-jd").value = draft.resume.jd; $("resume-template").value = draft.resume.templateId; overrides = draft.resume.overrides; bindings = draft.resume.bindings; renderSettings(); invalidatePreview(); }
+    } finally { restoringDraft = false; }
+    return { conflicts: [] };
+  }
+  return { allowContextChange, suspend, resume, clear, get dirty() { return dirty() || Boolean($("resume-json").value || $("resume-jd").value); }, candidateOptions: () => api("/api/studio/state"), async candidatesChanged(registry) {
+    if (suspended) return;
     const signature = registrySignature(registry); if (signature === knownCandidates) return;
     knownCandidates = signature;
     // Changes originate in guarded legacy actions. Refresh all repository revisions.

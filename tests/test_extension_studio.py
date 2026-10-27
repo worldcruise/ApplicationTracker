@@ -29,6 +29,7 @@ class ExtensionStudioTests(regression.IsolatedApplicationTestCase):
         for name in ("send_response", "send_header", "end_headers", "send_error", "send_json", "log_error"):
             setattr(handler, name, Mock())
         handler.read_json = Mock(return_value=payload)
+        self.authorize_handler(handler)
         getattr(handler, "do_" + method)()
         return handler
 
@@ -135,7 +136,8 @@ class ExtensionStudioTests(regression.IsolatedApplicationTestCase):
         for headers in ({"Host": "evil.test"}, {"Origin": "http://evil.test"}, {"X-Tracker-Token": "wrong"},
                         {"Origin": "chrome-extension://" + regression.EXTENSION_ID}):
             response = self.handler("/api/studio/extension/device", "PUT", {"data": {}, "revision": None}, headers)
-            self.assertEqual(response.send_json.call_args.args[0], 403)
+            response.send_response.assert_called_once_with(403)
+            self.assertEqual(json.loads(response.wfile.getvalue())["code"], "invalid-host" if "Host" in headers else "invalid-origin" if "Origin" in headers else "invalid-csrf")
             response.read_json.assert_not_called()
         for payload in ({"data": {}}, {"data": {}, "revision": 3}, {"data": {}, "revision": None, "path": "outside"}):
             response = self.handler("/api/studio/extension/device", "PUT", payload)

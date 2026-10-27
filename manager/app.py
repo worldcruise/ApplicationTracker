@@ -27,6 +27,7 @@ from tracker_config.web_studio import WebStudio, legacy_prompt
 from tracker_config.auth import AuthError, AuthService
 from tracker_config.security import SecurityRepository
 from manager import auth_http
+from tracker_config.repositories import _invalid_constant, _unique_object
 
 
 CONFIG_FILE = ROOT / "config" / "candidates.json"
@@ -345,6 +346,28 @@ def delete_candidate(candidate_id: str) -> dict:
 
 
 class TrackerHandler(BaseHTTPRequestHandler):
+    owner_authorization_enforced = True
+
+    def check_business_request(self, method):
+        path = urlsplit(self.path).path
+        if path != "/api" and not path.startswith("/api/"):
+            return self.check_local_request(write=method not in ("GET", "HEAD", "OPTIONS"))
+        try:
+            if not auth_http.check_request(self, method, SESSION_TOKEN):
+                return False
+            self.owner_context = auth_http.require_owner(self)
+            # Explicit MVP policy: the verified installation owner administers
+            # this registry. No client identity/unknown record field grants access.
+            match = re.fullmatch(r"/api/(?:studio/candidates/([A-Za-z0-9_-]+)/(?:profile|prompt|settings)|candidates/([^/]+)(?:/template)?)", path)
+            if match:
+                candidate_repository().get(match[1] or match[2])
+            return True
+        except AuthError as error:
+            auth_http.send_error(self, error)
+        except Exception as error:
+            self.handle_error(error)
+        return False
+
     def log_message(self, format, *args):
         if auth_http.is_auth_request(getattr(self, "path", "")) or b"/api/auth" in getattr(self, "raw_requestline", b""):
             # BaseHTTPRequestHandler normally logs the full request target.
@@ -355,9 +378,17 @@ class TrackerHandler(BaseHTTPRequestHandler):
 
     def send_error(self, code, message=None, explain=None):
         if auth_http.is_auth_request(getattr(self, "path", "")):
+            if code == 501:
+                auth_http.handle_request(self, getattr(self, "command", "GET"), SESSION_TOKEN)
+                return
             status = 405 if code == 501 else code
             auth_http.send_error(self, AuthError(status, "method-not-allowed" if status == 405 else "invalid-request", "Authentication request rejected."),
                                  allow=auth_http.ROUTES.get(urlsplit(self.path).path) if status == 405 else None)
+        elif urlsplit(getattr(self, "path", "")).path == "/api" or urlsplit(getattr(self, "path", "")).path.startswith("/api/"):
+            if code != 501 or self.check_business_request(getattr(self, "command", "GET")):
+                auth_http.send_error(self, AuthError(405 if code == 501 else code,
+                                     "method-not-allowed" if code == 501 else "not-found" if code == 404 else "invalid-request",
+                                     "API request rejected."))
         else:
             super().send_error(code, message, explain)
 
@@ -367,6 +398,7 @@ class TrackerHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(body)
 
@@ -379,7 +411,7 @@ class TrackerHandler(BaseHTTPRequestHandler):
         if size < 1 or size > MAX_REQUEST_BYTES:
             raise ValueError("Request is empty or too large.")
 
-        data = json.loads(self.rfile.read(size))
+        data = json.loads(self.rfile.read(size), object_pairs_hook=_unique_object, parse_constant=_invalid_constant)
 
         if not isinstance(data, dict):
             raise ValueError("Expected a JSON object.")
@@ -424,7 +456,7 @@ class TrackerHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if auth_http.handle_request(self, "GET", SESSION_TOKEN):
             return
-        if not self.check_local_request():
+        if not self.check_business_request("GET"):
             return
 
         path = urlsplit(self.path).path
@@ -467,6 +499,7 @@ class TrackerHandler(BaseHTTPRequestHandler):
                 "/extension-studio": ("index.html", "text/html; charset=utf-8"),
                 "/styles.css": ("styles.css", "text/css; charset=utf-8"),
                 "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+                "/auth.mjs": ("auth.mjs", "text/javascript; charset=utf-8"),
                 "/studio-app.mjs": ("studio-app.mjs", "text/javascript; charset=utf-8"),
                 "/studio-core.mjs": ("studio-core.mjs", "text/javascript; charset=utf-8"),
                 "/extension-studio.mjs": ("extension-studio.mjs", "text/javascript; charset=utf-8"),
@@ -524,7 +557,7 @@ class TrackerHandler(BaseHTTPRequestHandler):
     def do_HEAD(self) -> None:
         if auth_http.handle_request(self, getattr(self, "command", "HEAD"), SESSION_TOKEN):
             return
-        if self.check_local_request() and not self.reject_shared_method(urlsplit(self.path).path):
+        if self.check_business_request(getattr(self, "command", "HEAD")) and not self.reject_shared_method(urlsplit(self.path).path):
             self.send_error(501)
 
     do_OPTIONS = do_HEAD
@@ -533,7 +566,7 @@ class TrackerHandler(BaseHTTPRequestHandler):
     def handle_write(self, method: str) -> None:
         if auth_http.handle_request(self, method, SESSION_TOKEN):
             return
-        if not self.check_local_request(write=True):
+        if not self.check_business_request(method):
             return
 
         path = urlsplit(self.path).path

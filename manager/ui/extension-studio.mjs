@@ -25,14 +25,16 @@ export function probeExtension(extensionId, timeoutMs, runtime = globalThis.chro
   });
 }
 
-export function initializeExtensionStudio({ api, probe = probeExtension }) {
+import { mergeDraft, captureFields, restoreFields } from "./auth.mjs";
+export function initializeExtensionStudio({ api, probe = probeExtension, authorize = action => action() }) {
   const $ = id => document.getElementById(id);
   let snapshot, preferencesDirty = false, deviceDirty = false, saving = false, loadEpoch = 0, probeEpoch = 0, browserReport = null;
   const notice = (text, error = false) => { const target = $("extension-notice"); target.hidden = !text; target.textContent = text; target.className = `notice ${error ? "error" : "success"}`; };
-  const run = async action => { try { await action(); } catch (error) { notice(error.message, true); } };
+  let suspended = false;
+  const run = async action => { if (suspended) return; try { await action(); } catch (error) { if (!error.authHandled && !suspended) notice(error.message, true); } };
   function buttons() {
-    $("extension-device-fields").disabled = !snapshot || saving;
-    $("extension-preferences-fields").disabled = !snapshot || saving;
+    $("extension-device-fields").disabled = suspended || !snapshot || saving;
+    $("extension-preferences-fields").disabled = suspended || !snapshot || saving;
     $("extension-device-save").disabled = !snapshot || saving || !deviceDirty;
     $("extension-preferences-save").disabled = !snapshot || saving || !preferencesDirty;
     $("extension-probe").disabled = !snapshot?.device.data.extensionId || deviceDirty || saving;
@@ -89,7 +91,7 @@ export function initializeExtensionStudio({ api, probe = probeExtension }) {
   }
   async function save(scope, event) {
     event.preventDefault(); if (!snapshot || saving || !changed(scope)) return;
-    const data = fields(scope);
+    const data = fields(scope), epoch = loadEpoch;
     if (scope === "device") {
       if (data.extensionId && !/^[a-p]{32}$/.test(data.extensionId)) throw new Error("Extension ID must contain 32 lowercase letters a–p, or be empty.");
       if (data.label.length > 80) throw new Error("Computer label must be at most 80 characters.");
@@ -98,13 +100,15 @@ export function initializeExtensionStudio({ api, probe = probeExtension }) {
     saving = true; buttons();
     try {
       const response = await api(`/api/studio/extension/${scope}`, { method: "PUT", body: { data, revision: snapshot[scope].revision } });
+      if (epoch !== loadEpoch) return;
       snapshot[scope] = response;
       if (scope === "device") { deviceDirty = false; probeEpoch++; browserReport = null; connection(); } else preferencesDirty = false;
       render(scope); notice(scope === "device" ? (data.extensionId ? "Device settings saved. Run a browser check to verify a response." : "Device settings saved. Add an extension ID before checking this browser.") : "Workspace setup preferences saved.");
-    } catch (error) { notice(`Save failed: ${error.message} Your edits are retained; reload and reconcile if the revision changed.`, true); }
+    } catch (error) { if (!error.authHandled && epoch === loadEpoch) notice(`Save failed: ${error.message} Your edits are retained; reload and reconcile if the revision changed.`, true); }
     finally { saving = false; buttons(); }
   }
   async function copy(text, confirmSetup = false) {
+    await authorize(() => {});
     if (confirmSetup && snapshot.preferences.data.confirmSetupCopy && !window.confirm("Copy this extension setup address to the clipboard?")) return;
     if (!navigator.clipboard?.writeText) throw new Error("Clipboard access is unavailable in this browser.");
     try { await navigator.clipboard.writeText(text); } catch { throw new Error("Clipboard copy failed. Check browser permissions and try again."); }
@@ -140,5 +144,33 @@ export function initializeExtensionStudio({ api, probe = probeExtension }) {
   $("extension-copy-setup").addEventListener("click", () => run(async () => { if (snapshot && !deviceDirty && !preferencesDirty) await copy(extensionSetupAddress(snapshot.device.data.extensionId, snapshot.preferences.data.setupPage), true); }));
   $("extension-copy-diagnostics").addEventListener("click", () => run(async () => { if (snapshot) await copy(JSON.stringify({ schemaVersion: 1, diagnostics: snapshot.diagnostics, browserReport }, null, 2)); }));
   buttons();
-  return { load, discard, leave() { probeEpoch++; loadEpoch++; }, get dirty() { return preferencesDirty || deviceDirty; }, get saving() { return saving; } };
+  function suspend() {
+    const draft = snapshot ? { snapshot: structuredClone(snapshot),
+      preferences: preferencesDirty ? fields("preferences") : null, device: deviceDirty ? fields("device") : null,
+      forms: { preferences: captureFields($("extension-preferences-form")), device: captureFields($("extension-device-form")) } } : null;
+    suspended = true; probeEpoch++; loadEpoch++; buttons(); return draft;
+  }
+  function clear() {
+    suspended = true; snapshot = browserReport = null; preferencesDirty = deviceDirty = saving = false; probeEpoch++; loadEpoch++;
+    for (const id of ["extension-device-label", "extension-id-setting", "extension-timeout"]) $(id).value = "";
+    $("extension-diagnostics").replaceChildren(); $("extension-setup-address").textContent = ""; connection("Not checked", "Sign in before loading settings."); notice(""); buttons();
+  }
+  async function resume(draft, approval) {
+    suspended = false; await load();
+    if (!snapshot) throw new Error("Extension settings could not be reloaded.");
+    const key = JSON.stringify([snapshot.preferences.revision, snapshot.device.revision]), conflicts = [];
+    for (const scope of ["preferences", "device"]) if (draft?.[scope] && draft.snapshot[scope].revision !== snapshot[scope].revision)
+      conflicts.push({ label: `Extension ${scope}`, saved: snapshot[scope].data, draft: draft[scope] });
+    if (!conflicts.length || approval === key) {
+      for (const scope of ["preferences", "device"]) if (draft?.[scope]) {
+        const merged = mergeDraft(draft.snapshot[scope].data, draft[scope], snapshot[scope].data);
+        if (scope === "preferences") { $("extension-setup-page").value = merged.setupPage; $("extension-confirm-copy").checked = merged.confirmSetupCopy; }
+        else { $("extension-device-label").value = merged.label; $("extension-id-setting").value = merged.extensionId; $("extension-timeout").value = merged.probeTimeoutMs; }
+        if (draft.snapshot[scope].revision === snapshot[scope].revision) restoreFields($("extension-" + scope + "-form"), draft.forms[scope]);
+      }
+      preferencesDirty = changed("preferences"); deviceDirty = changed("device"); buttons();
+    }
+    return { key, conflicts, approval: key };
+  }
+  return { load, discard, suspend, resume, clear, leave() { probeEpoch++; loadEpoch++; }, get dirty() { return preferencesDirty || deviceDirty; }, get saving() { return saving; } };
 }

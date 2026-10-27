@@ -6,6 +6,13 @@ Candidates, which also contains the profile editor; Home is an in-app landing pa
 both libraries manage reusable records, and Resume Studio is a dark three-column
 editor. The correction report includes actual synthetic Chrome captures.
 
+UI-C3B adds the [manager authorization and login gate](manager-authorization.md)
+without redesigning these pages. All APIs below now require a verified owner
+cookie session; unsafe requests also retain the process-token CSRF and Origin
+checks. Login, expiration, draft recovery and cross-tab behavior have automated
+coverage. Real Chrome verification of this authentication integration is still
+**NOT TESTED**; earlier captures do not verify the new gate.
+
 Phase 5 adds Home, Candidates, Profile, Prompt Templates, Document Templates and
 Resume Studio to the existing plain-JavaScript manager. The legacy candidate
 dialog/actions remain in `manager/ui/app.js`. `studio-app.mjs` handles the new
@@ -32,10 +39,12 @@ requested. Both legacy storage modes remain file references. No import occurs.
 | POST/PUT `/api/studio/documents[/<id>]` | Explicit supported-layout configuration create/edit/archive with catalog revision |
 | PUT `/api/studio/candidates/<id>/settings` | Only `assignedPromptTemplateId` / `preferredDocumentTemplateId` changes |
 
-Writes require `{data, revision}` (null for an absent file), the existing session
-token, exact local Host and matching Origin. Revision conflicts return HTTP 409;
+Writes require `{data, revision}` (null for an absent file), an authenticated owner
+cookie, the process CSRF token, exact local Host and matching Origin. Revision
+conflicts return HTTP 409;
 the form retains edits and offers reload/discard. GET retains the existing local
-Host check. No CORS changes, arbitrary destination paths, registration calls or
+Host check and now owner-session/Origin validation. No CORS changes, arbitrary
+destination paths, registration calls or
 new write routes for generated documents are introduced. The existing candidate
 CRUD routes retain their existing registration behavior.
 

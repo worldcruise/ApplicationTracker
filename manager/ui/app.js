@@ -1,4 +1,5 @@
 import { initializeStudio } from "./studio-app.mjs";
+import { ManagerAuth, captureFields, restoreFields, mergeDraft } from "./auth.mjs";
 
 let studio;
 const elements = {
@@ -38,7 +39,6 @@ elements.documentAssignment = document.getElementById("candidate-document-assign
 elements.assignmentStatus = document.getElementById("candidate-assignment-status");
 
 let state = { schemaVersion: 1, activeCandidateId: null, candidates: [] };
-let sessionToken = "";
 let editingCandidateId = null;
 let selectingCandidate = false;
 let deletingCandidateId = null;
@@ -66,7 +66,7 @@ function updateCandidateSave() {
 async function loadCandidateAssignments(candidate = {}) {
   let snapshot, failure;
   try { snapshot = await studio.candidateOptions(); }
-  catch (error) { failure = error; }
+  catch (error) { if (error.authHandled) throw error; failure = error; }
   candidateRegistryRevision = snapshot?.registry.revision;
   function fill(select, entries, currentId, emptyLabel) {
     select.replaceChildren(); const empty = document.createElement("option"); empty.value = ""; empty.textContent = emptyLabel; select.append(empty);
@@ -91,30 +91,11 @@ function updatePromptMethod() {
 }
 
 async function api(path, options = {}) {
-  const method = options.method || "GET";
-  const headers = {};
-
-  if (method !== "GET") {
-    headers["Content-Type"] = "application/json";
-    headers["X-Tracker-Token"] = sessionToken;
-  }
-
-  const response = await fetch(path, {
-    method,
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-    cache: "no-store"
-  });
-
-  const result = await response.json();
-  if (!response.ok) {
-    const error = new Error(result.error || `Request failed: ${response.status}`);
-    error.status = response.status; error.code = result.code; throw error;
-  }
-  return result;
+  return authentication.api(path, options);
 }
 
 function showNotice(message, kind = "success") {
+  if (!authentication.ready) return;
   elements.notice.textContent = message;
   elements.notice.className = `notice ${kind}`;
   elements.notice.hidden = !message;
@@ -140,7 +121,8 @@ function detail(label, value) {
 }
 
 function render() {
-  studio?.candidatesChanged(state);
+  if (!authentication.ready) return;
+  const update = studio?.candidatesChanged(state);
   const candidates = state.candidates || [];
   const active = candidates.find(candidate => candidate.id === state.activeCandidateId);
 
@@ -196,17 +178,17 @@ function render() {
     row.append(info, actions);
     elements.candidateList.append(row);
   }
+  return update;
 }
 
 async function loadState() {
   const result = await api("/api/state");
-  sessionToken = result.sessionToken;
   state = {
     schemaVersion: result.schemaVersion,
     activeCandidateId: result.activeCandidateId,
     candidates: result.candidates
   };
-  render();
+  await render();
 }
 
 async function openAddCandidate() {
@@ -444,5 +426,113 @@ for (const input of [elements.name, elements.historyFolder, elements.extensionId
 updateCandidateSave();
 elements.form.addEventListener("submit", saveCandidate);
 
-studio = initializeStudio({ api, editCandidate: openEditCandidate });
-loadState().catch(error => showNotice(`Could not load candidates: ${error.message}`, "error"));
+let retainedDrafts = null, pendingReview = null;
+const $ = id => document.getElementById(id);
+function clearWorkspace() {
+  studio?.clear(); retainedDrafts = pendingReview = null;
+  state = { schemaVersion: 1, activeCandidateId: null, candidates: [] }; editingCandidateId = null;
+  candidateBaseline = null; candidateRegistryRevision = undefined; candidateSaving = selectingCandidate = false; deletingCandidateId = null;
+  if (elements.dialog.open) elements.dialog.close();
+  for (const field of elements.form.querySelectorAll("input, textarea, select")) { field.value = ""; field.checked = false; }
+  elements.candidateList.replaceChildren(); elements.activeSummary.textContent = ""; elements.candidateCount.textContent = "";
+  elements.formError.textContent = elements.notice.textContent = ""; $("auth-conflicts").replaceChildren(); $("auth-reconcile").hidden = true;
+  elements.dialogTitle.textContent = "Candidate configuration"; elements.folderResult.textContent = elements.assignmentStatus.textContent = elements.registrationNote.textContent = "";
+  elements.promptAssignment.replaceChildren(); elements.documentAssignment.replaceChildren();
+}
+function suspendWorkspace(owner) {
+  const candidate = elements.dialog.open ? { id: editingCandidateId, fields: candidateFields(), form: captureFields(elements.form),
+    baseline: candidateBaseline, revision: candidateRegistryRevision, makeActive: elements.makeActive.checked } : null;
+  const draft = { ownerId: owner.id, candidate, studio: studio?.suspend() };
+  if (!retainedDrafts) retainedDrafts = draft;
+  if (elements.dialog.open) elements.dialog.close();
+}
+async function restoreCandidate(draft, latest, reviewed) {
+  if (!draft) return [];
+  const candidate = draft.id ? latest.candidates.find(item => item.id === draft.id) : null;
+  if (draft.id && !candidate) return [{ label: "Edited candidate is no longer available", unavailable: true }];
+  const base = JSON.parse(draft.baseline || "{}"); delete base.activateAfterSave;
+  const current = candidate ? { name: candidate.name, extensionId: candidate.extensionId, historyFolder: candidate.historyFolder,
+    assignedPromptTemplateId: candidate.assignedPromptTemplateId || null, preferredDocumentTemplateId: candidate.preferredDocumentTemplateId || null,
+    ...(candidate.promptFilePath ? { promptFilePath: candidate.promptFilePath } : { promptTemplateText: (await api(`/api/candidates/${encodeURIComponent(candidate.id)}/template`)).promptTemplateText }) } : {};
+  const options = await studio.candidateOptions();
+  const conflict = draft.id && (draft.revision !== options.registry.revision || Object.keys(base).some(key => base[key] !== current[key]));
+  const reviewKey = JSON.stringify([options.registry.revision, current]);
+  if (conflict && reviewed !== reviewKey) return [{ label: "Candidate configuration", saved: current, draft: draft.fields, revision: reviewKey }];
+  const fields = conflict ? mergeDraft(base, draft.fields, current) : draft.fields;
+  await loadCandidateAssignments(candidate || {});
+  editingCandidateId = draft.id;
+  elements.name.value = fields.name; elements.historyFolder.value = fields.historyFolder; elements.extensionId.value = fields.extensionId;
+  elements.promptFilePath.value = fields.promptFilePath || ""; elements.promptTemplate.value = fields.promptTemplateText || "";
+  elements.promptChoiceFile.checked = Boolean(fields.promptFilePath); elements.promptChoicePaste.checked = !elements.promptChoiceFile.checked;
+  elements.promptAssignment.value = fields.assignedPromptTemplateId || ""; elements.documentAssignment.value = fields.preferredDocumentTemplateId || "";
+  elements.makeActive.checked = draft.makeActive;
+  if (!conflict) restoreFields(elements.form, draft.form);
+  updatePromptMethod();
+  candidateBaseline = conflict ? JSON.stringify({ ...current, activateAfterSave: false }) : draft.baseline; updateCandidateSave(); elements.dialog.showModal();
+  return [];
+}
+function reviewPanel(conflicts, approval) {
+  pendingReview = { approval, conflicts };
+  const target = $("auth-conflicts"); target.replaceChildren();
+  for (const conflict of conflicts) {
+    const detail = document.createElement("details"), title = document.createElement("summary"), values = document.createElement("pre");
+    title.textContent = conflict.label; values.textContent = conflict.unavailable ? "This draft cannot be restored to another record." : `Saved values:\n${JSON.stringify(conflict.saved, null, 2)}\n\nYour draft:\n${JSON.stringify(conflict.draft, null, 2)}`;
+    detail.append(title, values); target.append(detail);
+  }
+  $("auth-keep-drafts").disabled = conflicts.some(item => item.unavailable); $("auth-reconcile").hidden = false;
+}
+async function resumeDrafts(approval = null) {
+  if (!retainedDrafts) { await studio.resume(null); return; }
+  const result = await studio.resume(retainedDrafts.studio, approval?.studio);
+  const candidateConflicts = await restoreCandidate(retainedDrafts.candidate, state, approval?.candidate);
+  const conflicts = [...result.conflicts, ...candidateConflicts];
+  if (conflicts.length && (!approval || candidateConflicts.length || result.approval)) {
+    reviewPanel(conflicts, { studio: result.approval, candidate: candidateConflicts[0]?.revision }); return;
+  }
+  retainedDrafts = pendingReview = null; $("auth-reconcile").hidden = true;
+}
+export const authentication = new ManagerAuth({
+  channel: typeof window.BroadcastChannel === "function" ? new window.BroadcastChannel("tracker-owner-auth") : null,
+  dirty: () => Boolean(retainedDrafts || studio?.dirty || candidateBaseline && candidateSignature() !== candidateBaseline),
+  confirmDiscard: () => window.confirm("Discard unsaved edits in this tab and sign out?"),
+  onSuspend: suspendWorkspace, onClear: clearWorkspace,
+  onAuthenticated: async owner => {
+    const first = !studio;
+    if (!studio) studio = initializeStudio({ api, editCandidate: openEditCandidate, authorize: action => authentication.verifyAction(action) });
+    try {
+      await loadState();
+      if (retainedDrafts && retainedDrafts.ownerId !== owner.id) clearWorkspace();
+      if (retainedDrafts) await resumeDrafts(); else if (!first) await studio.resume(null);
+    } catch (error) { if (error.authHandled || retainedDrafts || !first) throw error; showNotice(`Workspace could not load: ${error.message}`, "error"); }
+  },
+  onChange: ({ phase, message, owner, busy, writes, retryAfter }) => {
+    const ready = phase === "authenticated";
+    document.body.dataset.auth = phase; $("auth-gate").hidden = ready;
+    $("protected-header").inert = $("protected-workspace").inert = !ready;
+    $("auth-title").textContent = ({ "setup-required": "Initialize the local owner", login: "Sign in", expired: "Sign in again", disconnected: "Backend unavailable", unavailable: "Authentication unavailable", blocked: "Request protection", "logout-unconfirmed": "Sign out not confirmed" })[phase] || "Checking authentication…";
+    $("auth-message").textContent = message; $("auth-setup").hidden = phase !== "setup-required";
+    $("auth-form").hidden = !["login", "expired"].includes(phase);
+    $("auth-sign-in").disabled = Boolean(busy || retryAfter);
+    $("auth-sign-out").disabled = Boolean(writes || busy);
+    $("auth-owner").textContent = ready ? owner?.username || "" : "";
+    $("auth-retry").hidden = !["setup-required", "disconnected", "unavailable", "blocked", "logout-unconfirmed"].includes(phase);
+    $("auth-retry").textContent = phase === "logout-unconfirmed" ? "Retry sign out" : "Retry connection";
+    $("auth-discard").hidden = !retainedDrafts;
+    if (retryAfter) { const timer = setTimeout(() => { if (authentication.phase === "login") $("auth-sign-in").disabled = false; }, retryAfter * 1000); timer.unref?.(); }
+  }
+});
+$("auth-form").addEventListener("submit", async event => { event.preventDefault(); const password = $("auth-password").value; $("auth-password").value = ""; await authentication.login($("auth-username").value, password); });
+$("auth-retry").addEventListener("click", () => authentication.start());
+$("auth-sign-out").addEventListener("click", () => authentication.logout());
+$("auth-discard").addEventListener("click", () => authentication.logout());
+$("auth-use-latest").addEventListener("click", async () => {
+  if (!window.confirm("Discard the retained drafts and use saved records?")) return;
+  try {
+    await authentication.verifyAction(() => studio.resume(null));
+    retainedDrafts = pendingReview = null; $("auth-reconcile").hidden = true;
+  } catch (error) { if (!error.authHandled) showNotice(error.message, "error"); }
+});
+$("auth-keep-drafts").addEventListener("click", async () => { try { await authentication.verifyAction(() => resumeDrafts(pendingReview?.approval)); } catch (error) { if (!error.authHandled) showNotice(error.message, "error"); } });
+authentication.bind(window, document);
+window.addEventListener("beforeunload", event => { if (authentication.dirty()) { event.preventDefault(); event.returnValue = ""; } });
+void authentication.start();

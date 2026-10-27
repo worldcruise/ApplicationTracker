@@ -36,9 +36,10 @@ registration module is never imported or executed. Cleanup restores mocks and
 removes only test-owned temporary directories. Module imports also suppress caches
 beside production source files.
 
-Active selection is tested by invoking the existing request-handler method with
-mocked request parsing, authorization, and response methods. No handler constructor,
-network socket, application server, or Chrome workflow is used.
+Early active-selection characterization invokes the request-handler method with
+mocked parsing/responses and a genuine isolated owner session. UI-C3B additionally
+exercises that route through real HTTP. No production manager or Chrome workflow
+is used.
 
 ## Coverage
 
@@ -100,8 +101,8 @@ unknown registry/candidate fields during legacy edits. Remaining limits include:
   tested; power loss, actual disk exhaustion, and cross-process races are not.
 - Linked-prompt validation differs: the manager enforces a size limit and wraps
   UTF-8 errors; the host has no equivalent size check and propagates decode errors.
-- The active-route test bypasses HTTP parsing and request authorization; it is not
-  coverage of the Host/Origin/session-token checks or a real HTTP integration test.
+- The original active-route characterization does not cover HTTP parsing; the
+  later auth/manager authorization suites supply real loopback HTTP coverage.
 - Native-message framing, host dispatch, Windows registry integration, native-host
   installation, Tk file dialogs, JavaScript UI, Chrome capture, clipboard behavior,
   and the extension service-worker lifecycle remain untested.
@@ -319,5 +320,40 @@ real session records. Browser cookie enforcement remains unverified.
 & 'C:\Users\Honey\AppData\Local\Programs\Python\Python313\python.exe' -B -m unittest discover -s tests -p 'test_auth*.py' -v
 ```
 
-See [authentication.md](../docs/authentication.md) for exact contracts and the
-explicit boundary: existing Studio routes do not require owner login until UI-C3.
+See [authentication.md](../docs/authentication.md) for the endpoint and session
+contracts. UI-C3B now protects the existing Studio APIs, as described below.
+
+## UI-C3B manager authorization and login
+
+Verified combined result: **222 Python tests and 184 JavaScript tests pass**.
+The earlier 217/153 baseline is retained. Five new Python test methods execute a
+real loopback HTTP authorization matrix for every one of the 20 business
+operations, both anonymous and owner-authenticated, with synthetic candidate
+files, mocked registration/pickers, and file-byte/side-effect guards. Additional
+subcases cover unsupported methods, aliases, origins, CSRF, duplicate framing,
+expiry/reset/logout, missing/corrupt owner data, and the exact static allowlist.
+
+The 31 new JavaScript tests comprise 20 controller tests in
+`manager-auth.test.mjs` and 11 actual page/component interaction tests in
+`web-studio.test.mjs`. They cover startup gating (including direct Extension Studio
+entry), genuine endpoint sequencing, local deadlines, focus/cross-tab hints,
+generation invalidation, no replay, dirty logout, offline logout, identity changes,
+memory-only drafts, fresh revisions, explicit conflict approval, removed records,
+PDF URL cleanup and protected copy/download checks. The DOM adapter is not Chrome.
+
+Existing handler fixtures now supply genuine synthetic owner sessions rather than
+introducing a production authorization bypass. The Python Web Studio test invokes
+both frontend suites. The complete Python discovery includes 25 auth-service
+tests, 24 original auth HTTP tests and the five new authorization HTTP tests.
+
+```powershell
+& 'C:\Users\Honey\AppData\Local\Programs\Python\Python313\python.exe' -B -m unittest discover -s tests -v
+& 'C:\Program Files\nodejs\node.exe' --test --test-reporter=spec tests/extension-access.test.mjs tests/resume-contract.test.mjs tests/pdf-renderer.test.mjs tests/web-studio.test.mjs tests/hotkey.test.mjs tests/manager-auth.test.mjs
+git diff --check
+```
+
+The opt-in visual fixture now creates only a synthetic owner in its disposable
+temporary directory. `--owner-state missing|corrupt` exercises setup/unavailable
+screens; `?auth=manual` disables scripted browser scenarios. It is never started
+by unittest discovery. See [manager-authorization.md](../docs/manager-authorization.md)
+for safe manual instructions and the unchecked browser acceptance checklist.

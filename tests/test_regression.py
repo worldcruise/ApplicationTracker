@@ -90,6 +90,7 @@ class IsolatedApplicationTestCase(unittest.TestCase):
         # Exercise the actual route without constructing a socket or HTTP server.
         handler = self.manager.TrackerHandler.__new__(self.manager.TrackerHandler)
         handler.path = "/api/active"
+        self.authorize_handler(handler)
         handler.check_local_request = Mock(return_value=True)
         handler.read_json = Mock(return_value={"candidateId": candidate_id})
         handler.send_json = Mock()
@@ -97,6 +98,21 @@ class IsolatedApplicationTestCase(unittest.TestCase):
         handler.log_error = Mock()
         handler.handle_write("POST")
         return handler
+
+    def authorize_handler(self, handler):
+        """Real synthetic owner/session for handler-level business regression tests."""
+        from types import SimpleNamespace
+        from auth_fixtures import AuthFixture, USERNAME, PASSWORD
+        if not hasattr(self, "handler_auth"):
+            fixture = AuthFixture()
+            fixture.setUp()
+            self.addCleanup(fixture.doCleanups)
+            self.handler_auth = fixture.service
+            self.handler_token = fixture.service.login(USERNAME, PASSWORD).token
+        handler.server = SimpleNamespace(server_port=8765, auth_service=self.handler_auth)
+        if not hasattr(handler, "headers"):
+            handler.headers = {"Host": "127.0.0.1:8765", "Origin": "http://127.0.0.1:8765", "X-Tracker-Token": self.manager.SESSION_TOKEN}
+        handler.headers["Cookie"] = "tracker_owner_session=" + self.handler_token
 
 
 class ExistingBehaviorTests(IsolatedApplicationTestCase):

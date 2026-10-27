@@ -1,10 +1,11 @@
 # UI-C1: Local owner storage and administration
 
 UI-C1 supplies local owner storage, password verification and administrative
-commands only. **It does not enable login or protect the manager's HTTP APIs.**
-UI-C2 now implements backend login and in-memory sessions; see
-[authentication.md](authentication.md). Authorization of all existing sensitive
-manager routes, the frontend login gate and fixed loopback port belong to UI-C3.
+commands. UI-C2 implements backend login and in-memory sessions; see
+[authentication.md](authentication.md). UI-C3B now protects all manager business
+APIs and adds the web login gate; see
+[manager-authorization.md](manager-authorization.md). The fixed loopback port
+remains deferred. Owner setup itself never migrates candidate records.
 No public account-registration or password-reset endpoint exists.
 
 No real owner account was initialized during development. Candidate configuration,
@@ -192,6 +193,6 @@ Owner storage does not secure the Native Messaging path. Its candidate-name,
 extension-ID and active-candidate checks are legacy compatibility checks, not owner
 authentication. Clipboard-only hotkey and separate context-menu behavior remain
 unchanged. UI-C2 adds login throttling, process-local sessions and logout. Browser
-pairing, candidate binding, extension login, the manager authorization transition
-and remote-computer transport remain deferred. Real Chrome verification remains
+pairing, candidate binding, extension login, fixed-port migration and
+remote-computer transport remain deferred. Real Chrome verification remains
 pending independently of these storage and HTTP tests.

@@ -1,4 +1,4 @@
-"""Cookie transport for the owner service; not the manager authorization rollout."""
+"""Cookie transport and shared request/owner guards for the local manager."""
 import hmac
 import json
 import re
@@ -63,15 +63,20 @@ def send_error(handler, error, *, allow=None):
                   retry_after=error.retry_after, allow=allow)
 
 
-def _protect(handler, method, csrf_token):
+def check_request(handler, method, csrf_token):
     headers = handler.headers
     for name in ("Host", "Origin", "X-Tracker-Token", "Content-Length", "Content-Type", "Cookie"):
-        if len(headers.get_all(name, [])) > 1:
+        values = headers.get_all(name, []) if hasattr(headers, "get_all") else ([headers[name]] if name in headers else [])
+        if len(values) > 1:
             raise _invalid("Duplicate authentication request headers are not supported.")
     if headers.get("Transfer-Encoding") is not None or headers.get("Expect") is not None:
         raise _invalid("Unsupported authentication request framing.")
-    if not handler.check_local_request(write=method == "POST", auth=True):
+    unsafe = method not in ("GET", "HEAD", "OPTIONS")
+    if not handler.check_local_request(write=unsafe, auth=True):
         return False
+    parsed = urlsplit(handler.path)
+    if parsed.scheme or parsed.netloc or parsed.fragment:
+        raise _invalid("Unsupported API request target.")
     expected_origin = f"http://127.0.0.1:{handler.server.server_port}"
     if headers.get("Origin") is not None and headers["Origin"] != expected_origin:
         raise AuthError(403, "invalid-origin", "Invalid origin.")
@@ -79,9 +84,24 @@ def _protect(handler, method, csrf_token):
         raise AuthError(403, "invalid-origin", "Invalid origin.")
     # The existing checker remains the shared Host/Origin authority. Its process
     # token is CSRF protection only, never an owner credential.
-    if method == "POST" and not hmac.compare_digest(headers.get("X-Tracker-Token", ""), csrf_token):
+    if unsafe and not hmac.compare_digest(headers.get("X-Tracker-Token", ""), csrf_token):
         raise AuthError(403, "invalid-csrf", "Invalid request token.")
+    length = headers.get("Content-Length")
+    if length is not None and not re.fullmatch(r"[0-9]{1,10}", length):
+        raise _invalid("Invalid request length.")
+    if method in ("GET", "HEAD", "OPTIONS") and int(length or "0"):
+        raise _invalid("Unexpected request body.")
     return True
+
+
+def require_owner(handler):
+    service = getattr(handler.server, "auth_service", None)
+    if service is None:
+        raise AuthError(503, "authentication-unavailable", "Owner authentication is unavailable.")
+    metadata = _safe_metadata(service.session(_session_token(handler)))
+    if metadata["user"]["role"] != "owner":
+        raise AuthError(403, "access-denied", "Owner access required.")
+    return metadata["user"]
 
 
 def _payload(handler, method):
@@ -146,7 +166,7 @@ def handle_request(handler, method, csrf_token):
         return False
     path = urlsplit(handler.path).path
     try:
-        if not _protect(handler, method, csrf_token):
+        if not check_request(handler, method, csrf_token):
             return True
         parsed = urlsplit(handler.path)
         if parsed.query or parsed.fragment or parsed.scheme or parsed.netloc:
@@ -170,7 +190,7 @@ def handle_request(handler, method, csrf_token):
                 raise ValueError("Invalid authentication availability state.")
             send_response(handler, 200, {"state": state, "csrfToken": csrf_token,
                                         "idleTimeoutSeconds": 1800, "absoluteTimeoutSeconds": 28800,
-                                        "managerAuthorizationEnforced": False})
+                                        "managerAuthorizationEnforced": getattr(handler, "owner_authorization_enforced", False) is True})
         elif path == "/api/auth/login":
             issued = service.login(payload["username"], payload["password"], previous_token=token)
             send_response(handler, 200, _safe_metadata(issued.metadata), cookie=_cookie(issued.token))

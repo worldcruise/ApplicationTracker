@@ -7,6 +7,16 @@ async function until(predicate, label) {
 }
 const result = document.createElement("output"); result.id = "fixture-report"; result.hidden = true; document.body.append(result);
 try {
+  const manual = new URL(location.href).searchParams.get("auth") === "manual";
+  if (manual) {
+    result.textContent = JSON.stringify({ ready: true, manualAuthentication: true });
+  } else {
+  await until(() => document.body.dataset.auth === "login" || document.body.dataset.auth === "authenticated", "authentication bootstrap");
+  if (document.body.dataset.auth === "login") {
+    $("auth-username").value = "synthetic-owner"; $("auth-password").value = "Synthetic browser passphrase 123!";
+    $("auth-form").requestSubmit();
+    await until(() => document.body.dataset.auth === "authenticated", "backend-verified synthetic login");
+  }
   const fixture = await (await fetch("/__fixture/data")).json();
   await until(() => $("active-summary").textContent.includes("Alex Example"), "candidate initialization");
   const view = new URL(location.href).searchParams.get("view") || "resume";
@@ -40,4 +50,5 @@ try {
     birthdate: view === "candidates" ? { display: $("profile-personal-birthday").value, pickerType: $("profile-personal-birthday-calendar").type, pickerValue: $("profile-personal-birthday-calendar").value, currentDisablesEnd: $("profile-workExperience-0-period-end").disabled } : null,
     integration: view === "extensions" ? { backend: $("extension-backend-status").textContent, browser: $("extension-connection-status").textContent, device: $("extension-device-state").textContent, main: rect(".extension-main"), preferences: rect(".extension-aside") } : null,
     overflowX: document.documentElement.scrollWidth > innerWidth });
+  }
 } catch (error) { result.textContent = JSON.stringify({ ready: false, error: error.message, uiError: $("studio-status").textContent, validation: $("resume-errors").textContent }); }

@@ -16,11 +16,15 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from tracker_config.repositories import ConfigurationRepositories
+from tracker_config.security import SecurityRepository
+from tracker_config.auth import AuthService
+from tracker_config.security_files import private_atomic_write
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port-file", type=Path, required=True)
+    parser.add_argument("--owner-state", choices=("ready", "missing", "corrupt"), default="ready")
     args = parser.parse_args()
     fixture = json.loads((ROOT / "tests/fixtures/resume-data.json").read_text(encoding="utf-8"))
     spec = importlib.util.spec_from_file_location("synthetic_visual_manager", ROOT / "manager/app.py")
@@ -34,6 +38,12 @@ def main():
         candidate["assignedPromptTemplateId"] = "synthetic-prompt"
         candidate["preferredDocumentTemplateId"] = "modern"
         repos.candidates.save(registry, expected_revision=None)
+        security = SecurityRepository(config)
+        security.permissions.make_private(config)
+        if args.owner_state == "ready":
+            security.initialize("synthetic-owner", "Synthetic browser passphrase 123!")
+        elif args.owner_state == "corrupt":
+            private_atomic_write(security.path, b"{broken synthetic record", permissions=security.permissions)
         profile = copy.deepcopy(fixture["profile"])
         profile["personal"]["birthday"] = "1992-07-09"
         profile["contact"]["phone"] = "555-0100"
@@ -58,12 +68,20 @@ def main():
                 elif path == "/__fixture/browser.mjs":
                     body = (ROOT / "tests/web-studio-browser-fixture.mjs").read_bytes(); mime = "text/javascript; charset=utf-8"
                 elif path == "/__fixture/data":
+                    if not manager.auth_http.check_request(self, "GET", manager.SESSION_TOKEN):
+                        return
+                    try:
+                        manager.auth_http.require_owner(self)
+                    except manager.AuthError as error:
+                        manager.auth_http.send_error(self, error)
+                        return
                     self.send_json(200, fixture); return
                 else:
                     super().do_GET(); return
                 self.send_response(200); self.send_header("Content-Type", mime); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+        server.auth_service = AuthService(security)
         args.port_file.write_text(str(server.server_port), encoding="utf-8")
         print(f"Synthetic Studio fixture: http://127.0.0.1:{server.server_port}/", flush=True)
         try:
