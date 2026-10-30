@@ -209,7 +209,8 @@ async function uiFixture(t, exists = true, legacy = false, profileData = fixture
   };
   const renders = []; let studio;
   if (legacy) {
-    globalThis.fetch = async (path, options) => {
+    globalThis.fetch = async function (path, options) {
+      assert.equal(this, globalThis, "Browser fetch receiver must be the global object");
       try { const value = await api(path, { ...options, method: options.method === "GET" ? undefined : options.method, body: options.body ? JSON.parse(options.body) : undefined }); return { ok: true, status: 200, json: async () => value }; }
       catch (error) { return { ok: false, status: error.status || 400, json: async () => ({ error: error.message, code: error.code }) }; }
     };
@@ -792,4 +793,18 @@ test("actual app logout warns, clears drafts and returns to the login gate", asy
   ui.setConfirm(true); assert.equal(await ui.document.auth.logout(), true); assert.equal(ui.document.body.dataset.auth, "login");
   assert.equal(ui.$("candidate-list").children.length, 0); assert.equal(ui.$("profile-editor").children.length, 0); assert.equal(ui.$("auth-owner").textContent, "");
   assert.equal(ui.$("protected-workspace").inert, true); await assert.rejects(ui.document.auth.api("/api/state"), error => error.authHandled);
+});
+
+test("local request execution failure displays a browser error and retry revalidates authentication", async t => {
+  const ui = await uiFixture(t, true, true), transport = ui.document.auth.fetcher;
+  ui.document.auth.fetcher = () => { throw new TypeError("Illegal invocation"); };
+  await assert.rejects(ui.document.auth.api("/api/state"), error => error.authHandled);
+  assert.equal(ui.document.body.dataset.auth, "client-error"); assert.equal(ui.$("auth-title").textContent, "Browser request error");
+  assert.equal(ui.$("auth-retry").hidden, false); assert.equal(ui.$("auth-retry").textContent, "Retry request");
+  assert.equal(ui.$("protected-workspace").inert, true);
+  ui.document.auth.fetcher = transport; const before = ui.calls.length;
+  await ui.$("auth-retry").fire("click");
+  assert.equal(ui.document.body.dataset.auth, "authenticated");
+  assert.deepEqual(ui.calls.slice(before, before + 2).map(call => call.path), ["/api/auth/status", "/api/auth/session"]);
+  assert.equal(ui.calls.some(call => call.method && !call.path.startsWith("/api/auth/")), false);
 });

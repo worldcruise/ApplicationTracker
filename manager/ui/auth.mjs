@@ -2,6 +2,12 @@
 export class AuthSuspended extends Error {
   constructor(message = "Authentication must be revalidated.") { super(message); this.authHandled = true; }
 }
+function requestExecutionError(cause) {
+  return Object.assign(new Error("The browser could not execute the Studio request. Reload the page and retry.", { cause }), { code: "client-request-error" });
+}
+function sessionTimerError(cause) {
+  return Object.assign(new Error("The browser could not maintain session monitoring. Reload the page and sign in again.", { cause }), { code: "client-request-error" });
+}
 
 export function captureFields(root) {
   return [...root.querySelectorAll("input, textarea, select")].map((field, index) => ({
@@ -56,13 +62,20 @@ export class ManagerAuth {
     this.onChange({ phase, message, owner: this.owner, busy: this.busy, writes: this.writes, retryAfter: this.retryAfter || 0 });
   }
   invalidate() {
-    this.epoch++; this.clearTimer(this.expiryTimer);
+    this.epoch++;
+    let timerError;
+    try { this.clearTimer.call(globalThis, this.expiryTimer); this.expiryTimer = undefined; }
+    catch (error) { timerError = sessionTimerError(error); }
+    // A timer cleanup failure must not prevent request invalidation or locking.
     for (const controller of this.pending) controller.abort();
     this.pending.clear();
+    return timerError;
   }
   lock(phase, message) {
     const preserve = this.ready || this.phase === "checking-session";
-    this.invalidate(); this.emit(phase, message);
+    const timerError = this.invalidate();
+    if (timerError) { phase = "client-error"; message = timerError.message; }
+    this.emit(phase, message);
     if (preserve && this.owner) {
       try { this.onSuspend(this.owner); }
       catch { this.onClear(); message = "Workspace locked. Drafts could not be retained."; }
@@ -74,9 +87,14 @@ export class ManagerAuth {
     const write = managed && method !== "GET" && !path.startsWith("/api/auth/");
     this.pending.add(controller); if (write) { this.writes++; this.emit(); }
     try {
-      const response = await this.fetcher(path, { method, credentials: "same-origin", cache: "no-store", redirect: "error", signal: controller.signal,
-        headers: method === "GET" ? {} : { "Content-Type": "application/json", "X-Tracker-Token": this.csrf },
-        body: method === "GET" ? undefined : JSON.stringify(options.body ?? {}) });
+      let request;
+      try {
+        // Native Window.fetch requires its global receiver, including when injected.
+        request = this.fetcher.call(globalThis, path, { method, credentials: "same-origin", cache: "no-store", redirect: "error", signal: controller.signal,
+          headers: method === "GET" ? {} : { "Content-Type": "application/json", "X-Tracker-Token": this.csrf },
+          body: method === "GET" ? undefined : JSON.stringify(options.body ?? {}) });
+      } catch (error) { throw requestExecutionError(error); }
+      const response = await request;
       const data = await response.json();
       if (epoch !== this.epoch) throw new AuthSuspended();
       if (!response.ok) {
@@ -87,8 +105,10 @@ export class ManagerAuth {
       return data;
     } catch (error) {
       if (epoch !== this.epoch || error.name === "AbortError") throw new AuthSuspended();
+      if (!error.status && /illegal invocation/i.test(error.message || "")) error = requestExecutionError(error);
       if (managed) {
-        if (error.status === 401) this.lock("expired", "Your session expired or was revoked. Unsaved edits remain in this tab.");
+        if (error.code === "client-request-error") this.lock("client-error", error.message);
+        else if (error.status === 401) this.lock("expired", "Your session expired or was revoked. Unsaved edits remain in this tab.");
         else if (error.code === "owner-setup-required") this.lock("setup-required", error.message);
         else if (error.code === "authentication-unavailable") this.lock("unavailable", error.message);
         else if (["invalid-csrf", "invalid-host", "invalid-origin", "access-denied"].includes(error.code)) this.lock("blocked", "Request protection rejected this operation. Reconnect, then explicitly retry your action.");
@@ -109,13 +129,19 @@ export class ManagerAuth {
   deadlines(metadata) {
     if (metadata?.authenticated !== true || !/^[a-f0-9]{32}$/.test(metadata.user?.id || "") || metadata.user?.role !== "owner"
         || !["idleRemainingSeconds", "absoluteRemainingSeconds"].every(key => Number.isInteger(metadata.session?.[key]) && metadata.session[key] > 0 && metadata.session[key] <= (key === "idleRemainingSeconds" ? 1800 : 28800))) throw new Error("Invalid authentication response.");
-    this.clearTimer(this.expiryTimer);
-    this.expiryTimer = this.setTimer(() => this.lock("expired", "Your session expired. Sign in again to recover eligible drafts."), Math.min(metadata.session.idleRemainingSeconds, metadata.session.absoluteRemainingSeconds) * 1000);
-    this.expiryTimer.unref?.();
+    try {
+      this.clearTimer.call(globalThis, this.expiryTimer);
+      const epoch = this.epoch;
+      this.expiryTimer = this.setTimer.call(globalThis, () => {
+        if (epoch === this.epoch) this.lock("expired", "Your session expired. Sign in again to recover eligible drafts.");
+      }, Math.min(metadata.session.idleRemainingSeconds, metadata.session.absoluteRemainingSeconds) * 1000);
+      this.expiryTimer.unref?.();
+    } catch (error) { throw sessionTimerError(error); }
   }
   async accept(metadata, reload = true) {
     if (this.owner && this.owner.id !== metadata.user.id) { this.invalidate(); this.onClear(); }
-    this.deadlines(metadata);
+    try { this.deadlines(metadata); }
+    catch (error) { this.lock("client-error", error.message); throw new AuthSuspended(error.message); }
     const epoch = this.epoch;
     this.owner = metadata.user; this.emit("restoring", "Loading authorized workspace…");
     try { if (reload) await this.onAuthenticated(this.owner); }
@@ -146,7 +172,7 @@ export class ManagerAuth {
       if (await this.bootstrap()) await this.accept(await this.raw("/api/auth/session"));
     } catch (error) {
       if (error.authHandled) return;
-      this.emit(error.status === 401 ? "login" : error.status ? "unavailable" : "disconnected", error.status === 401 ? "Sign in to your local workspace." : error.message || "Cannot reach the local backend.");
+      this.emit(error.code === "client-request-error" ? "client-error" : error.status === 401 ? "login" : error.status ? "unavailable" : "disconnected", error.status === 401 ? "Sign in to your local workspace." : error.message || "Cannot reach the local backend.");
     }
   }
   async login(username, password) {
@@ -160,7 +186,7 @@ export class ManagerAuth {
     } catch (error) {
       if (error.authHandled) return;
       this.retryAfter = error.retryAfter;
-      const phase = error.code === "owner-setup-required" ? "setup-required" : error.code === "authentication-unavailable" ? "unavailable" : error.status === 403 ? "blocked" : !error.status ? "disconnected" : "login";
+      const phase = error.code === "client-request-error" ? "client-error" : error.code === "owner-setup-required" ? "setup-required" : error.code === "authentication-unavailable" ? "unavailable" : error.status === 403 ? "blocked" : !error.status ? "disconnected" : "login";
       this.emit(phase, error.status === 401 ? "Invalid username or password." : error.status === 429 ? `Too many sign-in attempts. Retry in ${error.retryAfter} seconds.` : error.message);
     } finally { this.busy = false; this.emit(); }
   }
@@ -171,7 +197,7 @@ export class ManagerAuth {
       const data = await this.raw("/api/auth/session", {}, true);
       if (this.owner?.id !== data.user?.id) { this.lock("expired", "Owner identity changed. Sign in again."); return; }
       this.deadlines(data);
-    } catch (error) { if (!error.authHandled) this.lock("disconnected", "Session verification failed. Reconnect."); }
+    } catch (error) { if (!error.authHandled) this.lock(error.code === "client-request-error" ? "client-error" : "disconnected", error.code === "client-request-error" ? error.message : "Session verification failed. Reconnect."); }
     finally { this.checking = null; } })();
     return this.checking;
   }
@@ -184,16 +210,17 @@ export class ManagerAuth {
     if (this.phase !== "authenticated" || this.now() - this.lastActivity < 60000) return;
     this.lastActivity = this.now();
     try { const data = await this.raw("/api/auth/activity", { method: "POST" }, true); if (data.user?.id !== this.owner?.id) { this.lock("expired", "Owner identity changed. Sign in again."); return; } this.deadlines(data); }
-    catch (error) { if (!error.authHandled) this.lock("unavailable", "Session activity could not be verified."); }
+    catch (error) { if (!error.authHandled) this.lock(error.code === "client-request-error" ? "client-error" : "unavailable", error.code === "client-request-error" ? error.message : "Session activity could not be verified."); }
   }
   async logout(confirmed = false) {
     if (this.writes) { this.emit(this.phase, "Wait for the current save before signing out."); return false; }
     if (!confirmed && this.dirty() && !this.confirmDiscard()) return false;
-    this.pendingLogout = true; this.invalidate(); this.emit("signing-out", "Signing out…"); this.onClear();
+    this.pendingLogout = true; const timerError = this.invalidate(); this.emit("signing-out", "Signing out…"); this.onClear();
     try {
       const status = await this.raw("/api/auth/status"); this.csrf = status.csrfToken;
       await this.raw("/api/auth/logout", { method: "POST" });
-      this.pendingLogout = false; this.owner = null; this.channel?.postMessage({ type: "signed-out" }); this.emit("login", "Signed out."); return true;
+      this.pendingLogout = false; this.owner = null; this.channel?.postMessage({ type: "signed-out" });
+      this.emit(timerError ? "client-error" : "login", timerError ? `Signed out on the server. ${timerError.message}` : "Signed out."); return true;
     } catch { this.emit("logout-unconfirmed", "Workspace locked. Server logout could not be confirmed. Retry sign out when the backend returns."); return false; }
   }
   bind(window, document) {

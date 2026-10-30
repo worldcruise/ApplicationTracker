@@ -5,8 +5,10 @@ import http.client
 from http.cookies import SimpleCookie
 from io import StringIO
 import json
+import shutil
 from pathlib import Path
 import socket
+import subprocess
 from http.server import ThreadingHTTPServer
 import threading
 from urllib.parse import quote
@@ -93,6 +95,62 @@ class AuthHttpFixture(AuthFixture):
 
 
 class AuthHttpTests(AuthHttpFixture):
+    def test_browser_receiver_bootstrap_login_and_studio_use_real_http(self):
+        node = shutil.which("node") or r"C:\Program Files\nodejs\node.exe"
+        if not Path(node).is_file():
+            self.skipTest("Node.js unavailable; no dependencies installed")
+        script = r"""
+import assert from 'node:assert/strict';
+const { ManagerAuth } = await import(process.argv[1]);
+const [origin, username, password, ownerId] = process.argv.slice(2);
+const nativeFetch = globalThis.fetch;
+let cookie = '', loaded = 0;
+// Node has no browser cookie jar/automatic Origin header. This test-only adapter
+// supplies them and enforces the Window.fetch receiver contract; it is not Chrome.
+const browserFetch = function(path, options) {
+  assert.equal(this, globalThis, 'Detached browser-native fetch invocation');
+  const url = new URL(path, origin); assert.equal(url.origin, origin);
+  const headers = { ...options.headers, Origin: origin };
+  if (cookie) headers.Cookie = cookie;
+  return nativeFetch(url, { ...options, headers }).then(response => {
+    const issued = response.headers.get('set-cookie');
+    if (issued) cookie = issued.split(';')[0];
+    return response;
+  });
+};
+const auth = new ManagerAuth({ fetch: browserFetch, onAuthenticated: async owner => {
+  assert.equal(owner.id, ownerId);
+  const state = await auth.api('/api/state'); assert.deepEqual(state.candidates, []);
+  await auth.api('/api/studio/state'); await auth.api('/api/studio/extension'); loaded++;
+} });
+try {
+  await auth.start(); assert.equal(auth.phase, 'login'); assert.equal(loaded, 0);
+  await auth.login(username, password);
+  assert.equal(auth.phase, 'authenticated'); assert.equal(loaded, 1);
+  assert.equal(await auth.logout(), true);
+  const denied = await browserFetch.call(globalThis, '/api/state', {});
+  assert.equal(denied.status, 401);
+} finally { auth.dispose(); }
+"""
+        received = []
+        original_get = app.TrackerHandler.do_GET
+
+        def record_get(handler):
+            received.append(handler.path)
+            return original_get(handler)
+
+        with patch.object(app.TrackerHandler, "do_GET", record_get):
+            result = subprocess.run([node, "--input-type=module", "-e", script,
+                                     (Path(app.__file__).parent / "ui/auth.mjs").as_uri(),
+                                     f"http://127.0.0.1:{self.server.server_port}", USERNAME, PASSWORD,
+                                     self.record["users"][0]["id"]], cwd=self.directory,
+                                    text=True, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(received[:2], ["/api/auth/status", "/api/auth/session"])
+        self.assertIn("/api/studio/state", received)
+        self.assertIn("/api/studio/extension", received)
+        self.assertFalse(self.service._sessions)
+
     def test_status_bootstraps_csrf_without_candidate_or_owner_details(self):
         original = Path.open
 

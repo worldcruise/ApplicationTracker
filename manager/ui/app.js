@@ -509,14 +509,14 @@ export const authentication = new ManagerAuth({
     const ready = phase === "authenticated";
     document.body.dataset.auth = phase; $("auth-gate").hidden = ready;
     $("protected-header").inert = $("protected-workspace").inert = !ready;
-    $("auth-title").textContent = ({ "setup-required": "Initialize the local owner", login: "Sign in", expired: "Sign in again", disconnected: "Backend unavailable", unavailable: "Authentication unavailable", blocked: "Request protection", "logout-unconfirmed": "Sign out not confirmed" })[phase] || "Checking authentication…";
+    $("auth-title").textContent = ({ "setup-required": "Initialize the local owner", login: "Sign in", expired: "Sign in again", disconnected: "Backend unavailable", "client-error": "Browser request error", unavailable: "Authentication unavailable", blocked: "Request protection", "logout-unconfirmed": "Sign out not confirmed" })[phase] || "Checking authentication…";
     $("auth-message").textContent = message; $("auth-setup").hidden = phase !== "setup-required";
     $("auth-form").hidden = !["login", "expired"].includes(phase);
     $("auth-sign-in").disabled = Boolean(busy || retryAfter);
     $("auth-sign-out").disabled = Boolean(writes || busy);
     $("auth-owner").textContent = ready ? owner?.username || "" : "";
-    $("auth-retry").hidden = !["setup-required", "disconnected", "unavailable", "blocked", "logout-unconfirmed"].includes(phase);
-    $("auth-retry").textContent = phase === "logout-unconfirmed" ? "Retry sign out" : "Retry connection";
+    $("auth-retry").hidden = !["setup-required", "disconnected", "client-error", "unavailable", "blocked", "logout-unconfirmed"].includes(phase);
+    $("auth-retry").textContent = phase === "logout-unconfirmed" ? "Retry sign out" : phase === "client-error" ? "Retry request" : "Retry connection";
     $("auth-discard").hidden = !retainedDrafts;
     if (retryAfter) { const timer = setTimeout(() => { if (authentication.phase === "login") $("auth-sign-in").disabled = false; }, retryAfter * 1000); timer.unref?.(); }
   }

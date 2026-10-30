@@ -156,3 +156,202 @@ test("simultaneous bootstrap requests share one initialization", async t => {
   finish(f.response({ state: "ready", csrfToken: "csrf-only", managerAuthorizationEnforced: true })); await first;
   assert.equal(f.events.filter(event => event[0] === "load").length, 1);
 });
+
+test("browser-native fetch receives the global receiver for default and injected transports", async t => {
+  const paths = [];
+  let signedIn = false;
+  const browserFetch = function (path, options) {
+    assert.equal(this, globalThis, "A browser-native fetch must not receive ManagerAuth as its receiver");
+    paths.push(path);
+    assert.equal(options.credentials, "same-origin");
+    if (path.endsWith("login")) {
+      assert.equal(options.headers["X-Tracker-Token"], "csrf-only"); signedIn = true;
+    }
+    const data = path.endsWith("status") ? { state: "ready", csrfToken: "csrf-only", managerAuthorizationEnforced: true }
+      : path === "/api/state" ? { candidates: [] } : signedIn ? metadata() : { error: "Sign in", code: "authentication-required" };
+    return Promise.resolve({ ok: path.endsWith("session") ? signedIn : true, status: path.endsWith("session") && !signedIn ? 401 : 200, json: async () => data });
+  };
+  t.mock.method(globalThis, "fetch", browserFetch);
+  for (const injected of [false, true]) {
+    paths.length = 0; signedIn = false;
+    const auth = new ManagerAuth({ ...(injected ? { fetch: globalThis.fetch } : {}),
+      onAuthenticated: async () => { await auth.api("/api/state"); } });
+    t.after(() => auth.dispose());
+    await auth.start(); assert.equal(auth.phase, "login");
+    assert.deepEqual(paths, ["/api/auth/status", "/api/auth/session"]);
+    await auth.login("synthetic-owner", "synthetic password");
+    assert.equal(auth.phase, "authenticated");
+    assert.deepEqual(paths.slice(2), ["/api/auth/login", "/api/auth/session", "/api/state"]);
+  }
+});
+
+test("synchronous browser request execution errors are not reported as backend outages", async t => {
+  const auth = new ManagerAuth({ fetch() { throw new ReferenceError("Synthetic request implementation bug"); } });
+  t.after(() => auth.dispose());
+  await auth.start(); assert.equal(auth.phase, "client-error"); assert.equal(auth.ready, false);
+  assert.match(auth.message, /browser.*request/i); assert.doesNotMatch(auth.message, /backend unavailable|cannot reach/i);
+  const f = fixture(t); await f.auth.start(); f.auth.fetcher = () => { throw new TypeError("Illegal invocation"); };
+  await assert.rejects(f.auth.api("/api/state"), error => error.authHandled);
+  assert.equal(f.auth.phase, "client-error"); assert.ok(f.events.some(event => event[0] === "suspend"));
+});
+
+test("a rejected illegal-invocation error is distinct from a rejected network fetch", async t => {
+  for (const [message, expected] of [["Failed to execute 'fetch' on 'Window': Illegal invocation", "client-error"], ["Failed to fetch", "disconnected"]]) {
+    const auth = new ManagerAuth({ fetch: () => Promise.reject(new TypeError(message)) });
+    t.after(() => auth.dispose()); await auth.start(); assert.equal(auth.phase, expected); assert.equal(auth.ready, false);
+  }
+});
+
+function receiverTimers() {
+  const active = new Map(), calls = [], fail = { set: false, clear: false }; let serial = 0;
+  return {
+    active, calls, fail,
+    setTimer: function (action, delay) {
+      assert.ok(this === globalThis, "setTimeout requires the browser global receiver");
+      calls.push(["set", delay]);
+      if (fail.set) throw new Error("Synthetic timer creation failure");
+      const id = ++serial; active.set(id, { action, delay }); return id;
+    },
+    clearTimer: function (id) {
+      assert.ok(this === globalThis, "clearTimeout requires the browser global receiver");
+      calls.push(["clear", id]);
+      if (fail.clear) throw new Error("Synthetic timer cleanup failure");
+      active.delete(id);
+    }
+  };
+}
+
+test("receiver-sensitive timers allow verified login before initializing Studio", async t => {
+  const timers = receiverTimers(), f = fixture(t, timers); let initialized = 0;
+  f.auth.csrf = "csrf-only";
+  f.auth.onAuthenticated = async () => {
+    assert.equal(timers.active.size, 1);
+    assert.equal([...timers.active.values()][0].delay, 1800000);
+    await f.auth.api("/api/state"); initialized++;
+  };
+  await f.auth.login("synthetic-owner", "synthetic passphrase");
+  assert.equal(f.auth.phase, "authenticated"); assert.equal(initialized, 1);
+  assert.deepEqual(f.calls.map(call => call.path), ["/api/auth/login", "/api/auth/session", "/api/state"]);
+  assert.deepEqual(timers.calls.slice(0, 2), [["clear", undefined], ["set", 1800000]]);
+  assert.equal(f.calls[0].headers["X-Tracker-Token"], "csrf-only");
+});
+
+test("default native timer references receive the global receiver after dependency capture", async t => {
+  const timers = receiverTimers(), originals = { set: globalThis.setTimeout, clear: globalThis.clearTimeout }; let f;
+  // Capture browser-like native defaults synchronously; do not replace Node's
+  // globals while the asynchronous test/framework is running.
+  try {
+    globalThis.setTimeout = timers.setTimer; globalThis.clearTimeout = timers.clearTimer;
+    f = fixture(t, { setTimer: undefined, clearTimer: undefined });
+  } finally {
+    globalThis.setTimeout = originals.set; globalThis.clearTimeout = originals.clear;
+  }
+  await f.auth.login("synthetic-owner", "synthetic passphrase");
+  assert.equal(f.auth.phase, "authenticated"); assert.equal(timers.active.size, 1);
+  assert.deepEqual(timers.calls.slice(0, 2), [["clear", undefined], ["set", 1800000]]);
+});
+
+test("restored sessions initialize receiver-sensitive expiration monitoring before loading", async t => {
+  const timers = receiverTimers(), f = fixture(t, timers);
+  await f.auth.start();
+  assert.equal(f.auth.phase, "authenticated"); assert.equal(timers.active.size, 1);
+  assert.deepEqual(f.calls.map(call => call.path), ["/api/auth/status", "/api/auth/session"]);
+  assert.deepEqual(f.events, [["load", "a".repeat(32)]]);
+});
+
+test("repeated initialization replaces timers using verified remaining deadlines", async t => {
+  const timers = receiverTimers(), f = fixture(t, timers);
+  await f.auth.start(); const original = f.auth.expiryTimer;
+  await f.auth.start(); assert.notEqual(f.auth.expiryTimer, original);
+  assert.equal(timers.active.has(original), false); assert.equal(timers.active.size, 1);
+  f.handler = () => f.response({ ...metadata(), session: { idleRemainingSeconds: 90, absoluteRemainingSeconds: 40 } });
+  await f.auth.check();
+  assert.equal(f.auth.phase, "authenticated"); assert.equal(timers.active.size, 1);
+  assert.equal([...timers.active.values()][0].delay, 40000);
+  assert.equal(f.calls.some(call => call.path.endsWith("activity")), false);
+});
+
+test("logout clears receiver-sensitive timers and confirms backend revocation", async t => {
+  const timers = receiverTimers(), f = fixture(t, timers);
+  await f.auth.start();
+  f.handler = path => f.response(path.endsWith("status") ? { csrfToken: "csrf-only" } : { authenticated: false });
+  assert.equal(await f.auth.logout(), true);
+  assert.equal(timers.active.size, 0); assert.equal(f.auth.phase, "login"); assert.equal(f.auth.owner, null);
+  assert.equal(f.calls.at(-1).path, "/api/auth/logout");
+});
+
+test("receiver-sensitive expiration cleanup locks protected actions", async t => {
+  const timers = receiverTimers(), f = fixture(t, timers);
+  await f.auth.start(); const deadline = [...timers.active.values()][0];
+  deadline.action();
+  assert.equal(f.auth.phase, "expired"); assert.equal(f.auth.ready, false);
+  assert.equal(timers.active.size, 0); assert.ok(f.events.some(event => event[0] === "suspend"));
+  await assert.rejects(f.auth.api("/api/state"), error => error.authHandled);
+});
+
+test("timer creation or cleanup failure after verified login is a locked local error", async t => {
+  for (const operation of ["set", "clear"]) {
+    const timers = receiverTimers(), f = fixture(t, timers); timers.fail[operation] = true;
+    await f.auth.login("synthetic-owner", "synthetic passphrase");
+    assert.equal(f.auth.phase, "client-error", operation); assert.equal(f.auth.ready, false);
+    assert.equal(f.auth.owner, null); assert.equal(f.events.some(event => event[0] === "load"), false);
+    assert.match(f.auth.message, /browser.*session/i); assert.doesNotMatch(f.auth.message, /backend unavailable|cannot reach/i);
+    assert.deepEqual(f.calls.map(call => call.path), ["/api/auth/login", "/api/auth/session"]);
+    await assert.rejects(f.auth.api("/api/state"), error => error.authHandled);
+    timers.fail[operation] = false;
+  }
+});
+
+test("restored session timer failure cannot initialize protected Studio", async t => {
+  const timers = receiverTimers(), f = fixture(t, timers); timers.fail.set = true;
+  await f.auth.start();
+  assert.equal(f.auth.phase, "client-error"); assert.equal(f.auth.ready, false);
+  assert.equal(f.events.some(event => event[0] === "load"), false);
+  assert.deepEqual(f.calls.map(call => call.path), ["/api/auth/status", "/api/auth/session"]);
+});
+
+test("session checks and explicit activity classify timer failures locally and suspend drafts", async t => {
+  for (const action of ["check", "activity"]) {
+    const timers = receiverTimers(), f = fixture(t, timers);
+    await f.auth.start(); timers.fail.set = true;
+    await f.auth[action]();
+    assert.equal(f.auth.phase, "client-error", action); assert.equal(f.auth.ready, false);
+    assert.ok(f.events.some(event => event[0] === "suspend"));
+    await assert.rejects(f.auth.verifyAction(() => assert.fail("Protected action executed")), error => error.authHandled);
+  }
+});
+
+test("genuine login network rejection remains disconnected without initializing timers", async t => {
+  const timers = receiverTimers(), f = fixture(t, timers);
+  f.handler = () => Promise.reject(new TypeError("Failed to fetch"));
+  await f.auth.login("synthetic-owner", "synthetic passphrase");
+  assert.equal(f.auth.phase, "disconnected"); assert.equal(f.auth.ready, false);
+  assert.equal(f.events.some(event => event[0] === "load"), false); assert.equal(timers.active.size, 0);
+  assert.deepEqual(f.calls.map(call => call.path), ["/api/auth/login"]);
+});
+
+test("timer cleanup failure does not prevent logout revocation or unlock stale expiry callbacks", async t => {
+  const timers = receiverTimers(), f = fixture(t, timers);
+  await f.auth.start(); const staleDeadline = [...timers.active.values()][0]; timers.fail.clear = true;
+  f.handler = path => f.response(path.endsWith("status") ? { csrfToken: "csrf-only" } : { authenticated: false });
+  assert.equal(await f.auth.logout(), true);
+  assert.equal(f.auth.phase, "client-error"); assert.equal(f.auth.ready, false); assert.equal(f.auth.owner, null);
+  assert.equal(f.calls.at(-1).path, "/api/auth/logout"); assert.match(f.auth.message, /signed out/i);
+  staleDeadline.action(); assert.equal(f.auth.phase, "client-error");
+  timers.fail.clear = false;
+});
+
+test("timer cleanup failure still aborts pending work and suspends protected content", async t => {
+  const timers = receiverTimers(), f = fixture(t, timers);
+  await f.auth.start(); let finish;
+  f.handler = () => new Promise(resolve => { finish = resolve; });
+  const pending = f.auth.api("/api/state"); const signal = f.calls.at(-1).signal;
+  const rejected = assert.rejects(pending, error => error.authHandled);
+  timers.fail.clear = true;
+  f.auth.lock("expired", "Sign in again");
+  assert.equal(f.auth.phase, "client-error"); assert.equal(f.auth.ready, false); assert.equal(signal.aborted, true);
+  assert.ok(f.events.some(event => event[0] === "suspend"));
+  finish(f.response({ candidates: ["synthetic stale response"] }));
+  await rejected;
+  timers.fail.clear = false;
+});
