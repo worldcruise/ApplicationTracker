@@ -38,11 +38,12 @@ def main():
         candidate["assignedPromptTemplateId"] = "synthetic-prompt"
         candidate["preferredDocumentTemplateId"] = "modern"
         repos.candidates.save(registry, expected_revision=None)
-        security = SecurityRepository(config)
-        security.permissions.make_private(config)
+        security = SecurityRepository(Path(temporary) / "security", known_folder=lambda name: Path(temporary), legacy_directory=None)
+        security.permissions.make_private(Path(temporary))
         if args.owner_state == "ready":
             security.initialize("synthetic-owner", "Synthetic browser passphrase 123!")
         elif args.owner_state == "corrupt":
+            security.location.provision(security.permissions)
             private_atomic_write(security.path, b"{broken synthetic record", permissions=security.permissions)
         profile = copy.deepcopy(fixture["profile"])
         profile["personal"]["birthday"] = "1992-07-09"

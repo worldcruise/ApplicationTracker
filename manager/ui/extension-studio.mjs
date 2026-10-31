@@ -28,6 +28,7 @@ export function probeExtension(extensionId, timeoutMs, runtime = globalThis.chro
 import { mergeDraft, captureFields, restoreFields } from "./auth.mjs";
 export function initializeExtensionStudio({ api, probe = probeExtension, authorize = action => action() }) {
   const $ = id => document.getElementById(id);
+  const pairings = initializeBrowserPairings({ api, authorize });
   let snapshot, preferencesDirty = false, deviceDirty = false, saving = false, loadEpoch = 0, probeEpoch = 0, browserReport = null;
   const notice = (text, error = false) => { const target = $("extension-notice"); target.hidden = !text; target.textContent = text; target.className = `notice ${error ? "error" : "success"}`; };
   let suspended = false;
@@ -60,12 +61,13 @@ export function initializeExtensionStudio({ api, probe = probeExtension, authori
     $("extension-setup-address").textContent = snapshot.device.data.extensionId ? extensionSetupAddress(snapshot.device.data.extensionId, snapshot.preferences.data.setupPage) : "Save an extension ID to prepare its setup-page address.";
     const target = $("extension-diagnostics"); target.replaceChildren();
     const pkg = snapshot.diagnostics.package;
-    for (const [label, value] of [["Manager API", "Reached on last settings load"], ["Packaged extension", pkg.status === "available" ? `${pkg.name} · ${pkg.version}` : pkg.detail], ["Runtime diagnostic bridge", pkg.diagnosticBridge ? "Declared by the local package; check this browser separately" : "Not declared by the local package"], ["Native host", "Not tested; legacy capture verification required"], ["Per-job candidate capture", "Pending operation API and extension picker"], ["Bid-folder saving", "Pending writer and duplicate/failure protections"]]) {
+    for (const [label, value] of [["Manager API", "Reached on last settings load"], ["Packaged extension", pkg.status === "available" ? `${pkg.name} · ${pkg.version}` : pkg.detail], ["Runtime diagnostic bridge", pkg.diagnosticBridge ? "Declared by the local package; check this browser separately" : "Not declared by the local package"], ["Native host", "Not tested; legacy capture verification required"], ["Browser bindings", "Owner-managed below; extension login/transport pending"], ["Bid-folder saving", "Pending writer and duplicate/failure protections"]]) {
       const group = document.createElement("div"), term = document.createElement("dt"), valueNode = document.createElement("dd"); term.textContent = label; valueNode.textContent = value; group.append(term, valueNode); target.append(group);
     }
     buttons();
   }
   async function load() {
+    pairings.suspend();
     const epoch = ++loadEpoch; probeEpoch++; browserReport = null; snapshot = null; buttons();
     notice("Loading Extension Studio settings…"); $("extension-backend-status").textContent = "Checking…"; connection();
     $("extension-device-state").textContent = $("extension-preferences-state").textContent = "Loading";
@@ -74,6 +76,7 @@ export function initializeExtensionStudio({ api, probe = probeExtension, authori
       snapshot = result; preferencesDirty = deviceDirty = false; render();
       $("extension-backend-status").textContent = "Backend reached";
       notice(!result.device.data.extensionId ? "No extension ID is configured on this computer. Save its ID, then run a browser check." : "Settings loaded. Browser connection has not been checked.");
+      await pairings.load();
     } catch (error) {
       if (epoch !== loadEpoch) return;
       $("extension-backend-status").textContent = "Settings unavailable";
@@ -104,6 +107,7 @@ export function initializeExtensionStudio({ api, probe = probeExtension, authori
       snapshot[scope] = response;
       if (scope === "device") { deviceDirty = false; probeEpoch++; browserReport = null; connection(); } else preferencesDirty = false;
       render(scope); notice(scope === "device" ? (data.extensionId ? "Device settings saved. Run a browser check to verify a response." : "Device settings saved. Add an extension ID before checking this browser.") : "Workspace setup preferences saved.");
+      if (scope === "device") await pairings.load();
     } catch (error) { if (!error.authHandled && epoch === loadEpoch) notice(`Save failed: ${error.message} Your edits are retained; reload and reconcile if the revision changed.`, true); }
     finally { saving = false; buttons(); }
   }
@@ -145,12 +149,14 @@ export function initializeExtensionStudio({ api, probe = probeExtension, authori
   $("extension-copy-diagnostics").addEventListener("click", () => run(async () => { if (snapshot) await copy(JSON.stringify({ schemaVersion: 1, diagnostics: snapshot.diagnostics, browserReport }, null, 2)); }));
   buttons();
   function suspend() {
+    pairings.suspend();
     const draft = snapshot ? { snapshot: structuredClone(snapshot),
       preferences: preferencesDirty ? fields("preferences") : null, device: deviceDirty ? fields("device") : null,
       forms: { preferences: captureFields($("extension-preferences-form")), device: captureFields($("extension-device-form")) } } : null;
     suspended = true; probeEpoch++; loadEpoch++; buttons(); return draft;
   }
   function clear() {
+    pairings.suspend();
     suspended = true; snapshot = browserReport = null; preferencesDirty = deviceDirty = saving = false; probeEpoch++; loadEpoch++;
     for (const id of ["extension-device-label", "extension-id-setting", "extension-timeout"]) $(id).value = "";
     $("extension-diagnostics").replaceChildren(); $("extension-setup-address").textContent = ""; connection("Not checked", "Sign in before loading settings."); notice(""); buttons();
@@ -172,5 +178,98 @@ export function initializeExtensionStudio({ api, probe = probeExtension, authori
     }
     return { key, conflicts, approval: key };
   }
-  return { load, discard, suspend, resume, clear, leave() { probeEpoch++; loadEpoch++; }, get dirty() { return preferencesDirty || deviceDirty; }, get saving() { return saving; } };
+  return { load, discard, suspend, resume, clear, leave() { probeEpoch++; loadEpoch++; pairings.suspend(); }, get dirty() { return preferencesDirty || deviceDirty; }, get saving() { return saving || pairings.saving; } };
+}
+
+export function initializeBrowserPairings({ api, authorize = action => action() }) {
+  const $ = id => document.getElementById(id);
+  let snapshot = null, epoch = 0, locked = true, busy = false;
+  const notice = (text, error = false) => { $("pairing-notice").textContent = text; $("pairing-notice").className = error ? "field-result error" : "field-help"; };
+  const element = (tag, text) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; return node; };
+  function controls() {
+    $("pairing-refresh").disabled = busy || locked;
+    for (const container of [$("pairing-requests"), $("pairing-installations")]) {
+      for (const control of container.querySelectorAll("button,select,input")) control.disabled = locked || busy || control.dataset.unavailable === "true";
+    }
+  }
+  function selector(row, pending) {
+    const select = element("select"); select.id = `pairing-candidate-${row.id}`;
+    select.setAttribute("aria-label", `Candidate assigned to ${row.label}`);
+    const empty = element("option", "Choose a candidate"); empty.value = ""; select.append(empty);
+    for (const candidate of snapshot.candidates) { const option = element("option", `${candidate.name} · ${candidate.id}`); option.value = candidate.id; select.append(option); }
+    select.value = pending ? "" : row.candidateId;
+    return select;
+  }
+  function button(label, id, action) {
+    const node = element("button", label); node.id = id; node.type = "button"; node.className = "button secondary";
+    node.addEventListener("click", action); return node;
+  }
+  async function write(path, method, body, message) {
+    if (locked || busy) return;
+    const current = epoch;
+    busy = true; controls();
+    try {
+      await authorize(() => {});
+      if (current !== epoch || locked || !window.confirm(message)) return;
+      await api(path, { method, body });
+      if (current !== epoch || locked) return;
+      await load();
+      if (!locked && snapshot) notice("Saved. Current browser bindings were reloaded.");
+    } catch (error) {
+      if (current === epoch && !locked && !error.authHandled) notice(`${error.message} Refresh and review before retrying; the operation was not replayed.`, true);
+    } finally { if (current === epoch) { busy = false; controls(); } }
+  }
+  function render() {
+    $("pairing-requests").replaceChildren(); $("pairing-installations").replaceChildren();
+    for (const request of snapshot.requests) {
+      const card = element("article"); card.className = "pairing-record";
+      card.append(element("strong", request.label), element("code", request.approvalCode), element("p", `${request.extensionOrigin} · ${request.state} · expires ${request.expiresAt}`));
+      const candidate = selector(request, true), verifyLabel = element("label"); verifyLabel.className = "checkbox-row";
+      const verified = element("input"); verified.type = "checkbox"; verified.id = `pairing-verified-${request.id}`;
+      verifyLabel.append(verified, element("span", "I verified this browser label and approval code."));
+      const approve = button("Approve pairing", `pairing-approve-${request.id}`, () => {
+        if (!verified.checked || !candidate.value || locked || busy) return;
+        return write(`/api/studio/extension/pairings/${request.id}/approve`, "POST", { candidateId: candidate.value, revision: request.revision }, `Approve ${request.label} (${request.approvalCode}) for the selected candidate?`);
+      });
+      const update = () => { approve.dataset.unavailable = String(!verified.checked || !candidate.value); controls(); };
+      verified.addEventListener("change", update); candidate.addEventListener("change", update);
+      const deny = button("Deny request", `pairing-deny-${request.id}`, () => write(`/api/studio/extension/pairings/${request.id}/deny`, "POST", { revision: request.revision }, `Deny the pairing request from ${request.label}?`));
+      const actions = element("div"); actions.className = "toolbar"; actions.append(approve, deny);
+      card.append(candidate, verifyLabel, actions); $("pairing-requests").append(card); update();
+    }
+    for (const row of snapshot.installations) {
+      const card = element("article"); card.className = "pairing-record";
+      card.append(element("strong", row.label), element("p", `${row.id} · ${row.extensionOrigin}`), element("p", `Pairing request: ${row.pairingId || "Not recorded"}`), element("p", `Candidate: ${row.candidateName || "Unavailable"} · ${row.revoked ? "Revoked" : row.usable ? "Approved; online status not checked" : "Unavailable; pair again"} · revision ${row.bindingRevision}`));
+      const candidate = selector(row, false);
+      candidate.dataset.unavailable = String(!row.usable);
+      const save = button("Save candidate binding", `pairing-save-${row.id}`, () => {
+        if (!candidate.value || candidate.value === row.candidateId || !row.usable || locked || busy) return;
+        return write(`/api/studio/extension/installations/${row.id}/binding`, "PUT", { candidateId: candidate.value, revision: row.bindingRevision }, `Reassign ${row.label}? Its previous binding context will become invalid.`);
+      });
+      const update = () => { save.dataset.unavailable = String(!row.usable || !candidate.value || candidate.value === row.candidateId); controls(); };
+      candidate.addEventListener("change", update);
+      const revoke = button("Revoke installation", `pairing-revoke-${row.id}`, () => write(`/api/studio/extension/installations/${row.id}/revoke`, "POST", { revision: row.bindingRevision }, `Revoke ${row.label}? It will need a new pairing.`));
+      revoke.dataset.unavailable = String(row.revoked);
+      const actions = element("div"); actions.className = "toolbar"; actions.append(save, revoke);
+      card.append(candidate, actions); $("pairing-installations").append(card); update();
+    }
+    if (!snapshot.requests.length) $("pairing-requests").append(element("p", "No pending browser requests."));
+    if (!snapshot.installations.length) $("pairing-installations").append(element("p", "No approved browser installations."));
+    controls();
+  }
+  async function load() {
+    const current = ++epoch; locked = false; busy = true; snapshot = null;
+    $("pairing-requests").replaceChildren(); $("pairing-installations").replaceChildren(); controls(); notice("Loading browser pairings…");
+    try {
+      const result = await api("/api/studio/extension/pairings");
+      if (current !== epoch || locked) return;
+      if (!result || !Array.isArray(result.requests) || !Array.isArray(result.installations) || !Array.isArray(result.candidates)) throw new Error("Invalid pairing response.");
+      snapshot = result; busy = false; render(); notice("Bindings loaded. Enrollment/login UI remains pending; no online status is inferred.");
+    } catch (error) { if (current === epoch && !locked && !error.authHandled) notice(`Pairings unavailable: ${error.message}`, true); }
+    finally { if (current === epoch) { busy = false; controls(); } }
+  }
+  function suspend() { epoch++; locked = true; busy = false; snapshot = null; $("pairing-requests").replaceChildren(); $("pairing-installations").replaceChildren(); notice("Sign in and reload to manage browser pairings."); controls(); }
+  $("pairing-refresh").addEventListener("click", () => { if (!busy) return load(); });
+  suspend();
+  return { load, suspend, get saving() { return busy; } };
 }

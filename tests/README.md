@@ -1,5 +1,103 @@
 # Regression and configuration tests
 
+## D5D Workspace editors
+
+`workspace-editor.test.mjs` adds 41 synthetic tests for the actual editor model,
+DOM binding and authenticated controller. It covers both hotkey serialization
+modes, plain/ambiguous import review, explicit apply/cancel and overwrite consent,
+exact copy calls, clipboard failures, shared strict CV validation, independent
+Cover Letter text, tab retention and memory-only draft isolation on expiry,
+logout, outages and binding changes. No production storage or clipboard is used.
+The existing shell tests now assert functioning editor markup while retaining
+exactly two tabs and the deferred D5E Settings sections.
+
+```powershell
+& 'C:\Program Files\nodejs\node.exe' --test tests/workspace-editor.test.mjs
+& 'C:\Program Files\nodejs\node.exe' --test tests/*.test.mjs
+& 'C:\Users\Honey\AppData\Local\Programs\Python\Python313\python.exe' -B -m unittest discover -s tests -v
+```
+
+Real Chrome acceptance is **DEFERRED BY USER** until the extension is complete;
+D5D does not run the opt-in browser fixture or require real pairing/login.
+See [workspace-editors.md](../docs/workspace-editors.md).
+
+## D5C-C persistent extension shell
+
+`extension-auth.test.mjs`, `extension-launcher.test.mjs` and
+`extension-workspace.test.mjs` use `extension-ui-fakes.mjs` for synthetic HTTP,
+trusted storage, DOM and receiver-sensitive browser APIs. They cover pairing,
+login, restoration, binding acknowledgement, cross-page logout, stale response
+invalidation and the two-tab shell (now with D5D editors). No actual Chrome is controlled.
+
+`test_extension_ui_transport.py` additionally runs the packaged auth client against
+real isolated HTTP, with two synthetic installations and no web-cookie shortcut.
+Synthetic credentials are passed through stdin, never command-line arguments.
+
+```powershell
+& 'C:\Program Files\nodejs\node.exe' --test tests/extension-auth.test.mjs tests/extension-launcher.test.mjs tests/extension-workspace.test.mjs
+py -3.13 -B -m unittest discover -s tests -p test_extension_ui_transport.py -v
+```
+
+The opt-in `serve_extension_workspace_fixture.py` is only for later explicitly
+authorized visual review on port 8765. It does not start on import and was not
+launched for this checkpoint. See [extension-workspace.md](../docs/extension-workspace.md).
+
+## D5C-B installation-scoped owner sessions
+
+`test_extension_auth.py` uses synthetic private installations and an injectable
+clock for audience separation, shared resource limits, rotation, reset/recovery,
+binding races and candidate isolation. `test_extension_auth_http.py` exercises
+the four extension auth routes over real ephemeral loopback HTTP, including
+strict JSON/framing, exact origin/CORS, targeted management revocation and web
+cookie/enrollment compatibility. Fixtures never use production configuration.
+
+```powershell
+py -3.13 -B -m unittest discover -s tests -p test_extension_auth.py -v
+py -3.13 -B -m unittest discover -s tests -p test_extension_auth_http.py -v
+```
+
+See [extension-authentication.md](../docs/extension-authentication.md). These are
+automated tests, not installed-Chrome acceptance. No extension UI is added.
+
+## D5B browser pairing
+
+`test_browser_bindings.py` exercises private repositories and process-local
+exchanges using temporary synthetic owners/candidates. `test_pairing_http.py`
+uses real ephemeral loopback HTTP with verified synthetic owner cookies for
+management. D5B2 enrollment helpers exercise the separately guarded pre-login
+transport; old web issuance routes are explicitly retired. `browser-pairings.test.mjs` tests the
+existing Web Extension Studio approval/binding UI with a small DOM adapter.
+No production storage, browser registrations or real pairings are used.
+
+```powershell
+py -3.13 -B -m unittest discover -s tests -p test_browser_bindings.py -v
+py -3.13 -B -m unittest discover -s tests -p test_pairing_http.py -v
+& 'C:\Program Files\nodejs\node.exe' --test tests/browser-pairings.test.mjs
+```
+
+Include `tests/browser-pairings.test.mjs` with the six existing JavaScript test
+files when running the complete suite. See [browser-pairing.md](../docs/browser-pairing.md)
+for contracts, storage, post-commit claim safety and pending Chrome acceptance.
+
+## D5B2 enrollment transport
+
+`test_enrollment_http.py` tests the exact three pre-login exceptions, CORS,
+read-only bootstrap, secret/token handling, durable claims and retired routes.
+It also runs the actual packaged enrollment client against an ephemeral HTTP
+fixture using a test-only URL adapter, with real synthetic owner approval.
+`enrollment.test.mjs` covers trusted storage, Web Crypto, explicit identity
+confirmation, receiver correctness, concurrency and claim/storage loss recovery.
+No production server, owner data, browser profile or pairing is used.
+
+```powershell
+py -3.13 -B -m unittest discover -s tests -p test_enrollment_http.py -v
+& 'C:\Program Files\nodejs\node.exe' --test tests/enrollment.test.mjs
+```
+
+Include `tests/enrollment.test.mjs` as the eighth file in the full JavaScript
+suite. See [extension-enrollment.md](../docs/extension-enrollment.md) for contracts,
+Chrome networking research and unchecked browser acceptance.
+
 Run from the repository root with the available Python 3.13 interpreter:
 
 ```powershell
@@ -357,3 +455,50 @@ temporary directory. `--owner-state missing|corrupt` exercises setup/unavailable
 screens; `?auth=manual` disables scripted browser scenarios. It is never started
 by unittest discovery. See [manager-authorization.md](../docs/manager-authorization.md)
 for safe manual instructions and the unchecked browser acceptance checklist.
+
+## UI-C3D/D2 private owner storage
+
+Verified on Windows: **255 Python tests and 188 JavaScript tests pass**. No tests
+were removed. The storage/security cases comprise the 32 existing owner tests and
+30 location/provisioning tests in `test_security_location.py` (62 total). There
+are also 25 authentication-service tests and 32 real loopback HTTP test methods
+(27 authentication plus five authorization-matrix methods). Two new HTTP methods
+cover shared default resolution, read-only missing-owner discovery, actual login,
+reset revocation, legacy conflicts and corruption.
+
+Temporary fixtures inject both Known Folder and legacy-discovery locations. They
+never resolve production Local AppData for writes or load real candidate records.
+Security files and candidate fixtures now occupy separate directories. Native
+Windows DACL tests verify explicit protected creation before the directory exists,
+outsider read/write rejection, unsafe ancestors, inheritance, reparse points,
+partial provisioning failure and two-process initialization. The Known Folder API
+binding is checked with synthetic returned paths and flags; no test creates a
+production security directory. The manager-startup test mocks the server/browser;
+HTTP tests use real isolated loopback servers and real session authorization.
+
+```powershell
+& 'C:\Users\Honey\AppData\Local\Programs\Python\Python313\python.exe' -B -m unittest discover -s tests -p test_security_location.py -v
+& 'C:\Users\Honey\AppData\Local\Programs\Python\Python313\python.exe' -B -m unittest discover -s tests -v
+& 'C:\Program Files\nodejs\node.exe' --test --test-reporter=spec tests/extension-access.test.mjs tests/resume-contract.test.mjs tests/pdf-renderer.test.mjs tests/web-studio.test.mjs tests/hotkey.test.mjs tests/manager-auth.test.mjs
+git diff --check
+```
+
+See [private-owner-storage.md](../docs/private-owner-storage.md). Production
+provisioning, owner initialization, migration, interactive hidden entry and real
+Chrome login were not exercised. D3 comprehensive review and D4 production setup
+remain separate approval gates.
+
+## UI-C3D/D3 independent verification
+
+**262 Python tests and 188 JavaScript tests pass.** Seven additional Windows-only
+tests in `test_private_storage_verification.py` cover individual dangerous ancestor
+rights, exact native private grants after reset/recovery, an ACL change after
+flush, isolated explicit stores, shared default identity across checkout contexts,
+working-directory independence, and an actual isolated Windows junction. Existing
+62 owner/location, 25 auth service and 32 HTTP test methods still pass.
+
+Only verification tests and documentation changed in D3; application source did
+not. Production discovery was read-only and returned `setup-required` without
+creating directories. See the [D3 evidence and commands](../docs/private-owner-storage-verification.md)
+for results, limitations and the proposed Git boundaries. Production setup and
+Chrome login remain separately gated.

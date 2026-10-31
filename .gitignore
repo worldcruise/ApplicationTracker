@@ -1,3 +1,13 @@
 /config/
 __pycache__/
 *.py[cod]
+
+# Owner credentials, backups and interrupted private writes must never be tracked.
+security.json
+security.json.*
+.security.json.*
+
+# Private browser-installation digests, backups and recovery artifacts.
+browser-bindings.json
+browser-bindings.json.*
+.browser-bindings.json.*

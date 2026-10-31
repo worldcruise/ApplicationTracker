@@ -1,5 +1,6 @@
 """Process-local owner authentication. No filesystem work or credentials on import."""
 from collections import deque
+from contextlib import contextmanager
 from dataclasses import dataclass
 import hashlib
 import math
@@ -54,6 +55,19 @@ class _Session:
     generation: int
     created: float
     last_activity: float
+    audience: str = "web"
+    extension_scope: object = None
+
+
+@dataclass(frozen=True, repr=False)
+class _ExtensionScope:
+    backendId: str
+    workspaceId: str
+    installationId: str
+    bindingId: str
+    candidateId: str
+    bindingRevision: int
+    extensionOrigin: str
 
 
 @dataclass(frozen=True, repr=False)
@@ -134,6 +148,23 @@ class AuthService:
             self._attempts.append(now)
 
     def login(self, username, password, *, previous_token=None):
+        return self._login(username, password, previous_token=previous_token)
+
+    def login_extension(self, username, password, pairings, installation_id, credential, extension_origin):
+        return self._login(username, password, extension=(pairings, installation_id, credential, extension_origin))
+
+    @contextmanager
+    def _extension_transaction(self, extension, owner_id, *, logout_only=False):
+        pairings, installation_id, credential, origin = extension
+        try:
+            with pairings.installation_context(owner_id, installation_id, credential, origin,
+                                               logout_only=logout_only) as context:
+                yield context
+        except (ConfigurationError, OSError, RecursionError):
+            self.revoke_installation(installation_id)
+            raise AuthError(503, "authentication-unavailable", "Private installation authorization is unavailable.") from None
+
+    def _login(self, username, password, *, previous_token=None, extension=None):
         self._attempt()
         validate_credentials(username, password)
         if not self._verifications.acquire(blocking=False):
@@ -142,6 +173,12 @@ class AuthService:
             with self._lock:
                 snapshot = self._security()
                 serial = self._revocation_serial
+                scope = None
+                if extension is not None:
+                    with self._extension_transaction(extension, snapshot.data["users"][0]["id"]) as (security, context, _):
+                        if self._binding(security) != self._binding(snapshot.data):
+                            raise invalid_credentials()
+                        scope = _ExtensionScope(**context)
             owner = snapshot.data["users"][0]
             try:
                 canonical = normalize_username(username)
@@ -154,26 +191,63 @@ class AuthService:
                 raise invalid_credentials()
             with self._lock:
                 current = self._security()
+                # A reset detected during password work also removes sessions
+                # from that old generation, even though this login is rejected.
+                self._prune(self.clock(), current.data)
                 if current.revision != snapshot.revision or serial != self._revocation_serial:
                     raise invalid_credentials()
-                now = self.clock()
-                self._prune(now, current.data)
-                previous = self._digest(previous_token)
-                if len(self._sessions) >= MAX_SESSIONS and previous not in self._sessions:
-                    raise AuthError(503, "session-capacity", "Session capacity reached. Sign out an existing session or wait for expiration.")
-                for _ in range(5):
-                    token = secrets.token_urlsafe(32)
-                    digest = self._digest(token)
-                    if digest is not None and digest not in self._sessions:
-                        break
-                else:
-                    raise AuthError(503, "authentication-unavailable", "A fresh session could not be issued.")
-                session = _Session(*self._binding(snapshot.data), now, now)
-                self._sessions[digest] = session
-                self._sessions.pop(previous, None)
-                return IssuedSession(token, self._metadata(session, owner, now))
+                if extension is not None:
+                    with self._extension_transaction(extension, owner["id"]) as (security, context, candidate):
+                        if self._binding(security) != self._binding(snapshot.data):
+                            raise invalid_credentials()
+                        if _ExtensionScope(**context) != scope:
+                            raise AuthError(409, "binding-changed", "Browser assignment changed. Review it and sign in again explicitly.")
+                        return self._issue(current.data, scope=scope, candidate=candidate)
+                return self._issue(current.data, previous_token=previous_token)
         finally:
             self._verifications.release()
+
+    def _issue(self, data, *, previous_token=None, scope=None, candidate=None):
+        # Called under _lock and, for extensions, the current private binding
+        # transaction. No concurrent login can leave two sessions per install.
+        now = self.clock()
+        self._prune(now, data)
+        replace = set()
+        if scope is not None:
+            replace = {key for key, value in self._sessions.items()
+                       if value.audience == "extension" and value.extension_scope.installationId == scope.installationId}
+        else:
+            previous = self._digest(previous_token)
+            if previous in self._sessions and self._sessions[previous].audience == "web":
+                replace.add(previous)
+        if len(self._sessions) - len(replace) >= MAX_SESSIONS:
+            raise AuthError(503, "session-capacity", "Session capacity reached. Sign out an existing session or wait for expiration.")
+        for _ in range(5):
+            token = secrets.token_urlsafe(32)
+            digest = self._digest(token)
+            if digest is not None and digest not in self._sessions:
+                break
+        else:
+            raise AuthError(503, "authentication-unavailable", "A fresh session could not be issued.")
+        session = _Session(*self._binding(data), now, now, "extension" if scope else "web", scope)
+        metadata = self._extension_metadata(session, data["users"][0], candidate, now) if scope else self._metadata(session, data["users"][0], now)
+        for key in replace:
+            del self._sessions[key]
+        self._sessions[digest] = session
+        return IssuedSession(token, metadata)
+
+    @classmethod
+    def _extension_metadata(cls, session, owner, candidate, now):
+        metadata = cls._metadata(session, owner, now)
+        scope = session.extension_scope
+        metadata["session"]["audience"] = "extension"
+        metadata["context"] = {
+            "backendId": scope.backendId, "workspaceId": scope.workspaceId,
+            "installationId": scope.installationId, "bindingId": scope.bindingId,
+            "bindingRevision": scope.bindingRevision, "extensionOrigin": scope.extensionOrigin,
+            "candidate": {"id": scope.candidateId, "name": candidate["name"]},
+        }
+        return metadata
 
     def session(self, token, *, touch=False):
         with self._lock:
@@ -181,7 +255,7 @@ class AuthService:
             now = self.clock()
             self._prune(now, snapshot.data)
             session = self._sessions.get(self._digest(token))
-            if session is None:
+            if session is None or session.audience != "web":
                 raise authentication_required()
             if touch:
                 session.last_activity = now
@@ -189,7 +263,67 @@ class AuthService:
 
     def logout(self, token):
         with self._lock:
-            self._sessions.pop(self._digest(token), None)
+            digest = self._digest(token)
+            session = self._sessions.get(digest)
+            if session is not None and session.audience == "web":
+                del self._sessions[digest]
+
+    def extension_session(self, token, pairings, installation_id, credential, extension_origin, *, touch=False):
+        with self._lock:
+            snapshot = self._security()
+            now = self.clock()
+            self._prune(now, snapshot.data)
+            digest = self._digest(token)
+            session = self._sessions.get(digest)
+            if (session is None or session.audience != "extension"
+                    or session.extension_scope.installationId != installation_id):
+                raise authentication_required()
+            extension = (pairings, installation_id, credential, extension_origin)
+            try:
+                with self._extension_transaction(extension, session.user_id) as (security, context, candidate):
+                    if self._binding(security) != (session.user_id, session.backend_id, session.auth_epoch, session.generation):
+                        raise authentication_required()
+                    if _ExtensionScope(**context) != session.extension_scope:
+                        raise AuthError(409, "binding-changed", "Browser assignment changed. Sign in again before accessing its data.")
+                    # ACL/file checks can take time: expiration is authoritative
+                    # at the final decision, before any activity renewal.
+                    now = self.clock()
+                    self._prune(now, security)
+                    if digest not in self._sessions:
+                        raise authentication_required()
+                    if touch:
+                        session.last_activity = now
+                    return self._extension_metadata(session, security["users"][0], candidate, now)
+            except AuthError as error:
+                if error.code in ("binding-changed", "candidate-unavailable", "installation-unavailable", "authentication-required"):
+                    self._sessions.pop(digest, None)
+                raise
+
+    def logout_extension(self, token, pairings, installation_id, credential, extension_origin):
+        with self._lock:
+            # Best effort for the exact old scoped token, including after a
+            # reassignment/revocation. This never grants candidate access and
+            # cannot delete a replacement token from a concurrent login.
+            session = self._sessions.get(self._digest(token))
+            if (session is None or session.audience != "extension"
+                    or session.extension_scope.installationId != installation_id):
+                raise authentication_required()
+            extension = (pairings, installation_id, credential, extension_origin)
+            with self._extension_transaction(extension, session.user_id, logout_only=True) as (_, context, _):
+                scope = session.extension_scope
+                if any(context[key] != getattr(scope, key) for key in
+                       ("backendId", "workspaceId", "installationId", "bindingId", "extensionOrigin")):
+                    raise authentication_required()
+                self._sessions.pop(self._digest(token), None)
+
+    def revoke_installation(self, installation_id, *, binding_revision=None, revoked=False):
+        # Management calls this AFTER committing and releasing private locks.
+        # A delayed callback must preserve sessions issued under a newer binding.
+        with self._lock:
+            for digest, session in list(self._sessions.items()):
+                if (session.audience == "extension" and session.extension_scope.installationId == installation_id
+                        and (revoked or binding_revision is None or session.extension_scope.bindingRevision < binding_revision)):
+                    del self._sessions[digest]
 
     def revoke_all(self):
         with self._lock:

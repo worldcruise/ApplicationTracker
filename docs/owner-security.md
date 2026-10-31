@@ -13,10 +13,13 @@ profiles, prompts, history and extension state were not imported or migrated.
 
 ## Storage contract
 
-The CLI defaults to `config/security.json`. `--config-dir` can select another
-existing directory for isolated tests or local administration. It is a local CLI
-option, not a web-supplied filesystem path. The directory is never created by the
-repository. No HTTP route serves these files.
+The CLI and manager default to current-user Windows Known Folder LocalAppData +
+`ApplicationTracker/security/security.json`, outside candidate configuration.
+`--security-dir` selects an absolute private directory; owner commands retain
+`--config-dir` as its compatibility alias. Only explicit `init` may provision
+missing private directories. Startup/status are read-only. No HTTP route serves
+these files. See [private-owner-storage.md](private-owner-storage.md) for Known
+Folder resolution, strict ACLs, legacy conflicts and offline migration policy.
 
 Version 1 has this shape (placeholders are illustrative, not usable credentials):
 
@@ -74,10 +77,11 @@ py -3.13 -B manager/owner.py reset-password --username local-owner
 py -3.13 -B manager/owner.py recover-backup --username local-owner
 ```
 
-These commands affect only owner-security files in the selected directory. They
-do not start the manager, open a browser, register Native Messaging or modify
-candidate records. Use `--config-dir` for a synthetic directory instead of the
-default application configuration.
+The production commands above require separate setup approval. They affect only
+owner-security files in the selected directory. They do not start the manager,
+open a browser, register Native Messaging or modify
+candidate records. Use `--security-dir` for a synthetic directory instead of the
+default private owner location.
 
 `init` uses hidden password and confirmation prompts. It refuses an existing
 primary, backup or interrupted/recovery artifact, including malformed records.
@@ -121,9 +125,12 @@ Windows uses native DACL inspection/set operations through standard-library
 `ctypes`; `chmod` alone is not a Windows privacy boundary. New security files have
 protected DACLs granting access only to the current OS user, Local System and local
 Administrators. Existing security files and backups must grant no rights to other
-principals. The immediate parent must have trusted ownership and no effective
-write/delete/permission-change grants to other principals. Unsupported ACL entries
-fail closed. Read-only parent access is allowed. POSIX requires trusted ownership,
+principals. New private directories receive protected DACLs at native creation.
+Existing private directories must have protected DACLs with direct current-user
+full control and no outsider grants; existing ancestors must have trusted
+ownership and no effective write/delete/permission-change grants to outsiders.
+Unsupported ACL entries fail closed. Read-only ancestor access is allowed.
+POSIX requires trusted ownership,
 mode `0600` files and a parent not writable by group/others. That fallback is
 implemented but has not been exercised on this Windows environment.
 
@@ -167,17 +174,19 @@ git diff --check
 ```
 
 For an optional interactive smoke test, create and privatize a **new disposable**
-directory, then pass it explicitly to every command. These commands do not target
-`config/`:
+test root, then pass a child explicitly to every command. `init` alone creates
+the child with native private permissions. These commands do not target `config/`
+or production Local AppData:
 
 ```powershell
 $ownerTestDir = Join-Path ([IO.Path]::GetTempPath()) ('tracker-owner-review-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $ownerTestDir | Out-Null
 $ownerPython = 'C:\Users\Honey\AppData\Local\Programs\Python\Python313\python.exe'
 & $ownerPython -B -c "import sys; from pathlib import Path; from tracker_config.security_files import SecurityPermissions; SecurityPermissions().make_private(Path(sys.argv[1]))" $ownerTestDir
-& $ownerPython -B manager/owner.py init --config-dir $ownerTestDir --username review-owner
-& $ownerPython -B manager/owner.py verify-password --config-dir $ownerTestDir --username review-owner
-& $ownerPython -B manager/owner.py init --config-dir $ownerTestDir --username review-owner
+$ownerSecurityDir = Join-Path $ownerTestDir 'security'
+& $ownerPython -B manager/owner.py init --security-dir $ownerSecurityDir --username review-owner
+& $ownerPython -B manager/owner.py verify-password --security-dir $ownerSecurityDir --username review-owner
+& $ownerPython -B manager/owner.py init --security-dir $ownerSecurityDir --username review-owner
 ```
 
 Enter a synthetic passphrase, verify it successfully, run verification again with

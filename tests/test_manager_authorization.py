@@ -14,12 +14,12 @@ class ManagerAuthorizationTests(AuthHttpFixture):
         super().setUp()
         app.sync_host_registration.side_effect = None
         app.sync_host_registration.return_value = {"ok": True}
-        self.prompt_file = self.directory / "linked.txt"
+        self.prompt_file = self.config_directory / "linked.txt"
         self.prompt_file.write_text("Complete synthetic legacy prompt.\n", encoding="utf-8")
         self.candidate = {"id": "candidate-one", "name": "Alex Synthetic", "extensionId": "a" * 32,
-                          "historyFolder": str(self.directory / "history"), "promptFilePath": str(self.prompt_file)}
+                          "historyFolder": str(self.config_directory / "history"), "promptFilePath": str(self.prompt_file)}
         self.registry.write_text(json.dumps({"schemaVersion": 1, "activeCandidateId": None, "candidates": [self.candidate]}), encoding="utf-8")
-        self.repos = ConfigurationRepositories(self.directory)
+        self.repos = ConfigurationRepositories(self.config_directory)
         self.prompt_id = self.repos.save_prompt({"name": "Synthetic prompt", "body": "Exact prompt body"}, template_id=None, expected_revision=None).data["templates"][0]["id"]
         self.document_id = self.repos.save_document({"name": "Synthetic document", "layoutId": "classic"}, template_id=None, expected_revision=None).data["templates"][0]["id"]
         self.routes = [
@@ -41,15 +41,15 @@ class ManagerAuthorizationTests(AuthHttpFixture):
 
     def payload(self, method, path):
         if path == "/api/candidates":
-            return {**self.candidate, "name": "New Synthetic", "historyFolder": str(self.directory / "new-history")}
+            return {**self.candidate, "name": "New Synthetic", "historyFolder": str(self.config_directory / "new-history")}
         if path == "/api/candidates/candidate-one":
             return self.candidate if method == "PUT" else {}
         if path == "/api/active":
             return {"candidateId": "candidate-one"}
         if path == "/api/browse":
-            return {"kind": "folder", "currentPath": str(self.directory)}
+            return {"kind": "folder", "currentPath": str(self.config_directory)}
         if path == "/api/folders/check":
-            return {"historyFolder": str(self.directory / "probe-only")}
+            return {"historyFolder": str(self.config_directory / "probe-only")}
         if path.endswith("/profile"):
             return {"data": self.repos.profiles.new("candidate-one"), "revision": None}
         if path.endswith("/settings"):
@@ -63,7 +63,7 @@ class ManagerAuthorizationTests(AuthHttpFixture):
                 "revision": getattr(self.repos, "extension_" + scope).read().revision}
 
     def test_all_20_operations_reject_anonymous_access_before_business_effects(self):
-        before = {p: p.read_bytes() for p in self.directory.rglob("*") if p.is_file()}
+        before = {p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
         with patch.object(app, "candidate_repository", side_effect=AssertionError("Candidate lookup before authorization")), \
              patch.object(app, "WebStudio", side_effect=AssertionError("Studio before authorization")), \
              patch.object(app, "browse_path", side_effect=AssertionError("Picker before authorization")), \
@@ -75,7 +75,7 @@ class ManagerAuthorizationTests(AuthHttpFixture):
                     status, headers, data = self.request(method, path)
                     self.assertEqual((status, data["code"]), (401, "authentication-required"))
                     self.assertEqual(headers["Cache-Control"], "no-store")
-        self.assertEqual(before, {p: p.read_bytes() for p in self.directory.rglob("*") if p.is_file()})
+        self.assertEqual(before, {p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()})
         app.sync_host_registration.assert_not_called()
 
     def test_all_20_operations_work_for_verified_owner(self):
@@ -88,7 +88,7 @@ class ManagerAuthorizationTests(AuthHttpFixture):
                     status, _, data = self.request(method, path, token=token, **options)
                     self.assertEqual(status, 200, data)
             picker.assert_called_once()
-        self.assertFalse((self.directory / "probe-only").exists())
+        self.assertFalse((self.config_directory / "probe-only").exists())
         self.assertEqual(self.prompt_file.read_text(), "Complete synthetic legacy prompt.\n")
 
     def test_expiration_logout_reset_and_missing_owner_protect_business_reads(self):
@@ -102,7 +102,7 @@ class ManagerAuthorizationTests(AuthHttpFixture):
         self.repository.reset_password(USERNAME, NEW_PASSWORD, expected_revision=self.repository.read().revision)
         self.assertEqual(self.request("GET", "/api/state", token=token)[0], 401)
         self.repository.path.unlink()
-        self.assertEqual(self.request("GET", "/api/state", token=token)[2]["code"], "owner-setup-required")
+        self.assertEqual(self.request("GET", "/api/state", token=token)[2]["code"], "authentication-unavailable")
 
     def test_bad_security_origin_csrf_ids_and_aliases_never_bypass_guard(self):
         token, _, _ = self.login_http()

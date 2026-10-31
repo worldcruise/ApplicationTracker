@@ -5,8 +5,8 @@ import http.client
 from http.cookies import SimpleCookie
 from io import StringIO
 import json
-import shutil
 from pathlib import Path
+import shutil
 import socket
 import subprocess
 from http.server import ThreadingHTTPServer
@@ -19,6 +19,7 @@ from manager import app
 from manager.auth_http import COOKIE_NAME
 from tracker_config import auth
 from tracker_config.auth import AuthService
+from tracker_config.security import owner_repository
 
 
 UNSET = object()
@@ -27,7 +28,9 @@ UNSET = object()
 class AuthHttpFixture(AuthFixture):
     def setUp(self):
         super().setUp()
-        self.registry = self.directory / "candidates.json"
+        self.config_directory = self.root / "config"
+        self.config_directory.mkdir()
+        self.registry = self.config_directory / "candidates.json"
         self.registry.write_text(json.dumps({"schemaVersion": 1, "activeCandidateId": None, "candidates": []}), encoding="utf-8")
         self.registry_before = self.registry.read_bytes()
         self.enterContext(patch.object(app, "CONFIG_FILE", self.registry))
@@ -95,6 +98,40 @@ class AuthHttpFixture(AuthFixture):
 
 
 class AuthHttpTests(AuthHttpFixture):
+    def test_private_default_discovery_setup_and_login_use_real_http(self):
+        repository = owner_repository()
+        self.server.auth_service = AuthService(repository, clock=self.clock)
+        before = {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
+        for _ in range(2):
+            self.assertEqual(self.request("GET", "/api/auth/status")[2]["state"], "setup-required")
+        self.assertEqual(self.request("GET", "/api/state")[2]["code"], "owner-setup-required")
+        self.assertFalse(repository.directory.exists())
+        self.assertEqual(before, {path: path.read_bytes() for path in self.root.rglob("*") if path.is_file()})
+        repository.initialize(USERNAME, PASSWORD)
+        self.assertEqual(self.request("GET", "/api/auth/status")[2]["state"], "ready")
+        token, _, data = self.login_http()
+        self.assertEqual(data["user"]["id"], repository.read().data["users"][0]["id"])
+        self.assertEqual(self.request("GET", "/api/state", token=token)[0], 200)
+        repository.reset_password(USERNAME, NEW_PASSWORD, expected_revision=repository.read().revision)
+        self.assertEqual(self.request("GET", "/api/auth/session", token=token)[0], 401)
+        self.assertFalse((self.config_directory / "security.json").exists())
+
+    def test_private_storage_legacy_conflict_and_corruption_are_unavailable_over_http(self):
+        repository = owner_repository()
+        self.server.auth_service = AuthService(repository)
+        repository.initialize(USERNAME, PASSWORD)
+        token, _, _ = self.login_http()
+        legacy = self.root / "legacy"; legacy.mkdir()
+        sentinel = legacy / "security.json.bak"; sentinel.write_bytes(b"legacy synthetic sentinel")
+        self.assertEqual(self.request("GET", "/api/auth/status")[2]["state"], "unavailable")
+        self.assertEqual(self.request("GET", "/api/state", token=token)[0], 503)
+        self.assertEqual(sentinel.read_bytes(), b"legacy synthetic sentinel")
+        sentinel.unlink()
+        from tracker_config.security_files import private_atomic_write
+        private_atomic_write(repository.path, b"corrupt synthetic owner", permissions=repository.permissions)
+        self.assertEqual(self.request("GET", "/api/auth/status")[2]["state"], "unavailable")
+        self.assertEqual(self.request("POST", "/api/auth/login", payload={"username": USERNAME, "password": PASSWORD})[0], 503)
+
     def test_browser_receiver_bootstrap_login_and_studio_use_real_http(self):
         node = shutil.which("node") or r"C:\Program Files\nodejs\node.exe"
         if not Path(node).is_file():

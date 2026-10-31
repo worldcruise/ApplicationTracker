@@ -522,6 +522,14 @@ body[data-page=extensions] #active-summary { display: none; }
 .extension-layout .integration-dependency { padding: 12px; border: 1px solid #534631; border-radius: 6px; color: #ceb78f; background: #29241c; line-height: 1.6; }
 .integration-policy { background: #1c2c45; color: #a9c5f4; border: 1px solid #354d73; padding: 12px; border-radius: 6px; font-size: 12px; }
 .integration-address { overflow-wrap: anywhere; padding: 12px; background: #11161f; border: 1px solid var(--line); border-radius: 5px; font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
+.pairing-list { display: grid; gap: 12px; margin: 14px 0 24px; }
+.pairing-record { padding: 14px; border: 1px solid var(--line); border-radius: 6px; min-width: 0; }
+.pairing-record p, .pairing-record code { overflow-wrap: anywhere; }
+.pairing-record select { width: 100%; margin: 8px 0; }
+.pairing-record .checkbox-row { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0; }
+.pairing-record .checkbox-row input { width: auto; }
+.pairing-record .toolbar { flex-wrap: wrap; }
+.pairing-record code { display: block; color: #b9d1ff; font-size: 17px; letter-spacing: .08em; margin: 10px 0; }
 .extension-layout summary { font-size: 12px; }
 @media (max-width: 1000px) { .extension-layout { grid-template-columns: 1fr; } .extension-aside { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 650px) { .extension-overview, .extension-aside { grid-template-columns: 1fr; } .studio-page .extension-layout .panel { padding: 18px; } }

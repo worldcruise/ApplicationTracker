@@ -12,7 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tracker_config.models import ConfigurationError
-from tracker_config.security import SecurityRepository, normalize_username, verify_password
+from tracker_config.security import owner_repository, normalize_username, verify_password
 
 
 class _Parser(argparse.ArgumentParser):
@@ -45,15 +45,16 @@ def main(argv=None):
     for command in ("init", "verify-password", "reset-password", "recover-backup"):
         item = commands.add_parser(command)
         item.add_argument("--username", required=True)
-        item.add_argument("--config-dir", type=Path, default=ROOT / "config", help="Existing configuration directory; never created automatically.")
+        item.add_argument("--security-dir", "--config-dir", dest="security_dir", type=Path,
+                          help="Absolute private owner directory; --config-dir is a compatibility alias. Default: current-user Local AppData/ApplicationTracker/security.")
     args = parser.parse_args(argv)
     try:
         username = normalize_username(args.username)
-        repository = SecurityRepository(args.config_dir)
+        repository = owner_repository(args.security_dir)
         if args.command == "init":
             repository.ensure_uninitialized()
             result = repository.initialize(username, _new_password())
-            print(f"Owner created: {result.data['users'][0]['username']}. No candidates were imported and manager authorization is not yet enabled.")
+            print(f"Owner created: {result.data['users'][0]['username']}. Private storage: {repository.directory}. No candidates were imported; sign in through the manager.")
         elif args.command == "verify-password":
             snapshot = repository.read()
             owner = repository._owner(snapshot.data, username)

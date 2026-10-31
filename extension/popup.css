@@ -16,3 +16,10 @@ input:focus-visible, button:focus-visible { outline: 3px solid #9ab7ff; outline-
 .studio-link { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid #dbe3ee; }
 .studio-link a { color: #285bad; font-weight: 650; }
 .studio-link a:focus-visible { outline: 3px solid #9ab7ff; outline-offset: 3px; }
+#open-workspace { width: 100%; }
+#launcher-status { margin-top: 10px; font-size: 12px; }
+details { margin-top: 18px; border-top: 1px solid #dbe3ee; padding-top: 14px; }
+summary { cursor: pointer; font-weight: 700; margin-bottom: 12px; }
+summary:focus-visible { outline: 3px solid #9ab7ff; outline-offset: 3px; }
+.error { color: #a43d45; }
+button:disabled { opacity: .6; cursor: wait; }

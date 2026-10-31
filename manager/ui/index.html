@@ -76,10 +76,18 @@
             <dl class="integration-facts"><div><dt>Legacy capture</dt><dd>Selected company → MHTML archive + metadata → copied legacy prompt.</dd></div><div><dt>Existing duplicate check</dt><dd>A matching company folder stops the normal legacy capture flow. It is not a concurrent-save lock.</dd></div><div><dt>New bidding workflow</dt><dd>Not implemented. No bid-folder writes or application submissions are initiated here.</dd></div></dl>
             <p class="integration-dependency">Editable capture/bidding behavior requires a candidate-scoped operation API and save service. No preference controls are shown for behavior that cannot yet be applied.</p>
           </section>
-          <section class="panel" aria-labelledby="extension-candidate-title"><h2 id="extension-candidate-title">Candidate selection behavior</h2><p>New job operations must ask for a candidate inside the extension and carry that candidate's stable ID through the operation.</p>
-            <div class="integration-policy">Per-operation candidate selection · no web-level capture candidate</div>
-            <p class="integration-dependency">The new operation bridge and candidate picker are pending. This page does not select or activate a candidate.</p>
+          <section class="panel" aria-labelledby="extension-candidate-title"><h2 id="extension-candidate-title">Browser candidate bindings</h2><p>The owner assigns each approved browser profile its own candidate here. New extension operations will use that binding, without an extension candidate picker or changes to the legacy active candidate.</p>
+            <div class="integration-policy">Independent browser profiles · explicit owner approval · revocable bindings</div>
+            <p class="integration-dependency">Pairing management is available below. Extension enrollment/login and the two-tab workspace are later checkpoints; no browser is connected merely because a binding is listed.</p>
             <details><summary>Legacy compatibility behavior</summary><p>The existing popup stores a candidate name. Legacy Native Messaging capture still requires that candidate to be globally active. That restriction has not been copied into the new integration settings.</p></details>
+          </section>
+          <section class="panel" aria-labelledby="extension-pairing-title">
+            <div class="panel-heading"><div><p class="eyebrow">OWNER APPROVAL</p><h2 id="extension-pairing-title">Browser pairings</h2></div><button id="pairing-refresh" class="button secondary" type="button">Refresh pairings</button></div>
+            <p class="field-help">Verify the label and code against the requesting browser before approving. The code is not a credential. Browser enrollment and extension login UI are not implemented yet.</p>
+            <p id="pairing-notice" class="field-help" role="status" aria-live="polite">Not loaded</p>
+            <h3>Pending requests</h3><div id="pairing-requests" class="pairing-list"></div>
+            <h3>Approved installations</h3><div id="pairing-installations" class="pairing-list"></div>
+            <p class="field-help">Approvals and assignments require explicit confirmation. Unsubmitted selections are discarded on refresh or sign out. Listing an installation does not prove it is online.</p>
           </section>
           <section class="panel" aria-labelledby="extension-files-title"><h2 id="extension-files-title">Local file-saving configuration</h2><p>Configuration-folder and external prompt-file grants are managed in the extension's existing Studio file-access page. Handles stay in extension-origin IndexedDB.</p>
             <p class="integration-dependency">Bid-root selection, company-folder creation and application-file saving are pending. A saved path or extension ID does not grant filesystem permission.</p>

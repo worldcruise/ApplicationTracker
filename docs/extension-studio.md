@@ -6,7 +6,23 @@ dark shell, responsive panels, accessible forms and guarded navigation. The
 existing extension-origin `studio.html` remains the standalone file-access page.
 These pages have different responsibilities.
 
+## Backend address prerequisite
+
+Production manager startup now uses `http://127.0.0.1:8765/` exclusively. An
+occupied or unavailable port stops startup; no port scanning, fallback or process
+termination occurs. See [manager startup and manual acceptance](manager-startup.md).
+The existing runtime diagnostic still returns public package metadata only. The
+stable address does not implement pairing, extension login, candidate bindings or
+authenticated extension HTTP access, and is not proof of backend identity.
+
 ## Implemented capabilities
+
+D5B adds [private browser pairing and candidate bindings](browser-pairing.md) to
+this existing page. Owner-authenticated routes manage pending requests,
+approval/denial, explicit candidate assignment and revocation.
+The [D5B2 pre-login enrollment transport and packaged client](extension-enrollment.md)
+are implemented separately. Enrollment/login UI and the two-tab extension UI
+remain pending.
 
 | Area | Current behavior |
 | --- | --- |
@@ -14,13 +30,14 @@ These pages have different responsibilities.
 | Workspace preferences | Select the actual setup-page address copied by this UI and whether copying asks for confirmation |
 | Device settings | Save a computer label, installed extension ID and diagnostic timeout |
 | Capture/bidding | Explain current legacy behavior and the missing operation/save services; no inert preference controls |
-| Candidate selection | Document per-operation selection in the extension; no web candidate selector or activation writes |
+| Candidate binding | Owner approves an individual browser request and assigns/reassigns its candidate here; no extension picker or active-candidate mutation |
 | Files | Prepare/copy the existing extension page's address; grants remain inside the extension |
 | Diagnostics | Display packaged version/bridge declaration, actual API-load outcome and optional browser response; copy a non-sensitive report |
 
-The new candidate-scoped capture bridge/picker, extension resume workspace,
-bid-root selection, artifact saving, pairing, heartbeats and registered computers
-are **not implemented** by this page. No Connected badge is inferred from local
+The extension login transport/UI, enrollment UI and extension resume workspace,
+bid-root selection, artifact saving, heartbeats and registered computers
+are **not implemented** by this page. Private pairing administration is implemented;
+it does not prove an installation is online. No Connected badge is inferred from local
 package files or saved settings. The existing global-active/native capture path
 remains labeled legacy compatibility behavior; it was not adopted by new settings.
 
@@ -41,9 +58,10 @@ exactly 32 lowercase letters a–p. Timeout is an integer from 1000 through 1500
 Paths, candidate selections, capture actions, credentials and client-selected
 device IDs are not accepted in these write payloads.
 
-The workspace currently has one local owner; there is no authenticated per-user
-account store. The two files separate preference scope from machine-local setup
-without pretending multi-user synchronization exists. Future registered computers
+The workspace uses the existing authenticated single local owner. The two files
+separate preference scope from machine-local setup, while browser credential
+digests remain in private security storage. Multi-user synchronization is not
+implemented. Future registered computers
 need an authenticated mapping, not merely a copied device file. Browser handles
 remain in extension-origin IndexedDB and are not placed in either JSON record.
 

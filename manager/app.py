@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import argparse
 import os
 import re
 import secrets
+import socket
 import subprocess
 import sys
 import tempfile
@@ -25,8 +27,8 @@ from tracker_config.models import RevisionConflict
 from tracker_config.repositories import ConfigurationRepositories
 from tracker_config.web_studio import WebStudio, legacy_prompt
 from tracker_config.auth import AuthError, AuthService
-from tracker_config.security import SecurityRepository
-from manager import auth_http
+from tracker_config.security import owner_repository
+from manager import auth_http, pairing_http, enrollment_http, extension_auth_http
 from tracker_config.repositories import _invalid_constant, _unique_object
 
 
@@ -369,7 +371,12 @@ class TrackerHandler(BaseHTTPRequestHandler):
         return False
 
     def log_message(self, format, *args):
-        if auth_http.is_auth_request(getattr(self, "path", "")) or b"/api/auth" in getattr(self, "raw_requestline", b""):
+        if (auth_http.is_auth_request(getattr(self, "path", ""))
+                or pairing_http.is_pairing_request(getattr(self, "path", ""))
+                or getattr(self, "path", "").startswith("/api/extension/")
+                or b"/api/auth" in getattr(self, "raw_requestline", b"")
+                or b"/api/studio/extension/pairings" in getattr(self, "raw_requestline", b"")
+                or b"/api/extension/" in getattr(self, "raw_requestline", b"")):
             # BaseHTTPRequestHandler normally logs the full request target.
             # Even rejected credential-bearing URLs must never reach logs.
             super().log_message("Authentication request processed.")
@@ -454,9 +461,15 @@ class TrackerHandler(BaseHTTPRequestHandler):
             self.send_json(500, {"error": "The request could not be completed."})
 
     def do_GET(self) -> None:
+        if extension_auth_http.handle_request(self, "GET", CONFIG_FILE.parent):
+            return
+        if enrollment_http.handle_request(self, "GET", CONFIG_FILE.parent):
+            return
         if auth_http.handle_request(self, "GET", SESSION_TOKEN):
             return
         if not self.check_business_request("GET"):
+            return
+        if pairing_http.handle_request(self, "GET", CONFIG_FILE.parent):
             return
 
         path = urlsplit(self.path).path
@@ -555,6 +568,10 @@ class TrackerHandler(BaseHTTPRequestHandler):
         return False
 
     def do_HEAD(self) -> None:
+        if extension_auth_http.handle_request(self, getattr(self, "command", "HEAD"), CONFIG_FILE.parent):
+            return
+        if enrollment_http.handle_request(self, getattr(self, "command", "HEAD"), CONFIG_FILE.parent):
+            return
         if auth_http.handle_request(self, getattr(self, "command", "HEAD"), SESSION_TOKEN):
             return
         if self.check_business_request(getattr(self, "command", "HEAD")) and not self.reject_shared_method(urlsplit(self.path).path):
@@ -564,9 +581,15 @@ class TrackerHandler(BaseHTTPRequestHandler):
     do_PATCH = do_HEAD
 
     def handle_write(self, method: str) -> None:
+        if extension_auth_http.handle_request(self, method, CONFIG_FILE.parent):
+            return
+        if enrollment_http.handle_request(self, method, CONFIG_FILE.parent):
+            return
         if auth_http.handle_request(self, method, SESSION_TOKEN):
             return
         if not self.check_business_request(method):
+            return
+        if pairing_http.handle_request(self, method, CONFIG_FILE.parent):
             return
 
         path = urlsplit(self.path).path
@@ -658,20 +681,41 @@ class TrackerHandler(BaseHTTPRequestHandler):
             self.handle_error(error)
 
 
-def main() -> None:
-    server = ThreadingHTTPServer(("127.0.0.1", 0), TrackerHandler)
-    server.auth_service = AuthService(SecurityRepository(CONFIG_FILE.parent))
-    url = f"http://127.0.0.1:{server.server_port}/"
-
-    print(f"Application Tracker: {url}")
-    webbrowser.open(url)
-
+def main(argv=None) -> None:
+    parser = argparse.ArgumentParser(description="Local Application Tracker manager")
+    parser.add_argument("--security-dir", type=Path, help="Absolute private owner directory; default: current-user Local AppData/ApplicationTracker/security.")
+    args = parser.parse_args(argv)
+    server = None
     try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
+        try:
+            server = ThreadingHTTPServer(("127.0.0.1", 8765), TrackerHandler, bind_and_activate=False)
+            # HTTPServer enables address reuse by default. On Windows that can
+            # allow another listener to bind the same address; require exclusivity.
+            server.allow_reuse_address = False
+            server.allow_reuse_port = False
+            if sys.platform == "win32":
+                server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            server.server_bind()
+            server.server_activate()
+        except OSError as error:
+            raise SystemExit(
+                "Cannot start Application Tracker at http://127.0.0.1:8765/: "
+                f"the port is occupied or unavailable ({error}). "
+                "Resolve the conflict manually. No alternative port will be used."
+            ) from None
+
+        server.auth_service = AuthService(owner_repository(args.security_dir))
+        url = f"http://127.0.0.1:{server.server_port}/"
+        print(f"Application Tracker: {url}")
+        webbrowser.open(url)
+
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass
     finally:
-        server.server_close()
+        if server is not None:
+            server.server_close()
 
 
 if __name__ == "__main__":

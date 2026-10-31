@@ -36,7 +36,8 @@ class AuthenticationTests(AuthFixture):
         session = next(iter(self.service._sessions.values()))
         self.assertNotIn(issued.token, json.dumps(asdict(session)))
         self.assertNotIn(PASSWORD, json.dumps(asdict(session)))
-        self.assertEqual(set(asdict(session)), {"user_id", "backend_id", "auth_epoch", "generation", "created", "last_activity"})
+        self.assertEqual(set(asdict(session)), {"user_id", "backend_id", "auth_epoch", "generation", "created", "last_activity", "audience", "extension_scope"})
+        self.assertEqual((session.audience, session.extension_scope), ("web", None))
         self.assertEqual((session.created, session.last_activity), (0, 0))
 
     def test_incorrect_unknown_and_disabled_credentials_have_identical_failures_and_hash_work(self):

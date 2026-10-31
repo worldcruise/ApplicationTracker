@@ -21,6 +21,7 @@ from tracker_config.security import (
     normalize_username, validate_password_verifier, validate_security_record, verify_password,
 )
 from tracker_config import security_files
+from tracker_config import security_location
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,12 +45,16 @@ class OwnerSecurityTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="tracker-owner-tests-")
         self.addCleanup(temporary.cleanup)
-        self.directory = Path(temporary.name)
+        self.root = Path(temporary.name)
+        self.directory = self.root / "security"
+        self.enterContext(patch.object(security_location, "windows_known_folder", lambda name: self.root))
+        self.enterContext(patch.object(security_location, "LEGACY_DIRECTORY", self.root / "legacy"))
         self.repository = SecurityRepository(self.directory)
         self.policy = self.repository.permissions
         # Test fixtures explicitly own their private directory. The production
         # repository never repairs an existing directory's permissions.
-        self.policy.make_private(self.directory)
+        self.policy.make_private(self.root)
+        self.policy.create_private_directory(self.directory)
         self.record = {
             "schemaVersion": 1, "backendId": "1" * 32, "authEpoch": "2" * 32,
             "users": [{"id": "3" * 32, "username": "review-owner", "role": "owner",
@@ -241,10 +246,11 @@ class OwnerSecurityTests(unittest.TestCase):
                     self.repository.initialize("review-owner", PASSWORD)
                 self.assertEqual(list(self.directory.iterdir()), [])
 
-    def test_missing_configuration_directory_is_never_created(self):
+    def test_missing_directory_discovery_never_creates_files(self):
         missing = self.directory / "missing" / "config"
         with self.assertRaises(FileNotFoundError):
-            SecurityRepository(missing).initialize("review-owner", PASSWORD)
+            SecurityRepository(missing).read()
+        SecurityRepository(missing).ensure_uninitialized()
         self.assertFalse(missing.parent.exists())
 
     def test_recovery_always_requires_new_password_preserves_corrupt_bytes_and_identity(self):
@@ -273,7 +279,7 @@ class OwnerSecurityTests(unittest.TestCase):
         self.write_raw(self.repository.backup_path, json.dumps(self.record).encode())
         with self.assertRaises(ConfigurationError):
             self.repository.initialize("new-owner", NEW_PASSWORD)
-        with self.assertRaises(FileNotFoundError):
+        with self.assertRaisesRegex(ConfigurationError, "recovery artifacts"):
             self.repository.read()
         plan = self.repository.recovery_snapshot()
         self.assertIsNone(plan.revision)
@@ -434,7 +440,7 @@ class OwnerSecurityTests(unittest.TestCase):
     def test_cli_setup_verify_wrong_password_and_duplicate_setup(self):
         result, output, errors, _ = self.run_cli("init", passwords=[PASSWORD, PASSWORD])
         self.assertEqual(result, 0, errors)
-        self.assertIn("manager authorization is not yet enabled", output)
+        self.assertIn("sign in through the manager", output)
         self.assertEqual(self.run_cli("verify-password", passwords=[PASSWORD])[0], 0)
         self.assertEqual(self.run_cli("verify-password", passwords=[NEW_PASSWORD])[0], 1)
         before = self.repository.path.read_bytes()
@@ -480,7 +486,7 @@ class OwnerSecurityTests(unittest.TestCase):
             "from tracker_config.security import SecurityRepository; "
             "from tracker_config.models import ConfigurationError\n"
             "password = sys.stdin.readline().rstrip('\\n')\n"
-            "try:\n SecurityRepository(Path(sys.argv[1])).initialize('review-owner', password)\n"
+            "try:\n SecurityRepository(Path(sys.argv[1]), known_folder=lambda name: Path(sys.argv[1]).parent, legacy_directory=None).initialize('review-owner', password)\n"
             "except ConfigurationError:\n sys.exit(7)\n"
         )
         processes = []

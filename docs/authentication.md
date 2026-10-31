@@ -12,11 +12,16 @@ No real owner account is initialized automatically.
 - `tracker_config/auth.py`: transport-independent `AuthService(repository, clock=...)`.
 - `manager/auth_http.py`: strict HTTP parsing, safe response projection and cookies.
 - `manager/app.py`: auth dispatch and one service instance attached to each server.
-- `tracker_config/security.py`: the unchanged UI-C1 owner source, verifier helpers,
+- `tracker_config/security.py`: the UI-C1 owner schema and verifier helpers,
   `authEpoch` and `authGeneration`.
+- `tracker_config/security_location.py`: shared read-only Known Folder discovery
+  and explicit private-directory provisioning for administrative setup.
 
-There is one owner repository, at the existing security location. Authentication
-never loads candidate records, creates folders, rewrites profiles or initializes
+There is one owner repository, at current-user Known Folder LocalAppData +
+`ApplicationTracker/security/security.json`, or a validated absolute
+`--security-dir` shared by manager and administrative commands. There is no
+repository fallback. See [private-owner-storage.md](private-owner-storage.md).
+Authentication never loads candidate records, creates folders, rewrites profiles or initializes
 an account. Administrative setup/reset/recovery remain local CLI operations; see
 [owner-security.md](owner-security.md).
 
@@ -204,9 +209,14 @@ not be exposed to the LAN or reused for remote computers. See the primary
 [cookie reference](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie)
 and [RFC 6265 section 8.5](https://www.rfc-editor.org/rfc/rfc6265#section-8.5).
 
-The current production launcher still selects a random loopback port. The fixed
-127.0.0.1:8765 transition, with no fallback, remains a separate deferred unit.
-A fixed port will not by itself create cookie isolation from other loopback services.
+The production launcher binds only to IPv4 `127.0.0.1:8765`. It fails clearly if
+that address is unavailable, without trying another port or terminating its
+occupant. See [manager startup](manager-startup.md). Isolated HTTP tests and the
+synthetic browser fixture continue using OS-assigned ephemeral loopback ports;
+request guards validate the actual server port in either case. Authentication,
+cookie scope, CSRF and Origin checks are unchanged. A fixed port is not a backend
+identity credential and does not create cookie isolation from other loopback
+services. Restarting the manager still invalidates in-memory owner sessions.
 
 ## Verification and rollout
 

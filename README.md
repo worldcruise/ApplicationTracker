@@ -4,7 +4,7 @@ Application Tracker manages several candidate profiles for a Chrome extension. A
 
 **Current scope:** The web platform includes Home, combined candidate/profile management, template libraries, Resume Studio PDF preview/download, and [Extension Studio integration management](docs/extension-studio.md). Legacy extension capture remains separate. New candidate-scoped extension operations, bid-folder saving, a bidding queue and application statuses are pending. Installed-extension/native capture has not been verified end to end by the synthetic web tests.
 
-**Owner authentication:** [Local owner setup and recovery](docs/owner-security.md) provide the private credential store and administrative CLI. [Backend login and sessions](docs/authentication.md) supply cookie authentication. All manager business APIs now require a verified owner session, and the web Studio starts behind a [setup/login gate](docs/manager-authorization.md). No existing candidate data is migrated. Legacy Native Messaging remains a separate security boundary.
+**Owner authentication:** [Local owner setup and recovery](docs/owner-security.md) provide the private credential store and administrative CLI. Credentials use [current-user private Local AppData storage](docs/private-owner-storage.md), separate from candidate configuration; only explicitly authorized setup creates it. [Backend login and sessions](docs/authentication.md) supply cookie authentication. All manager business APIs now require a verified owner session, and the web Studio starts behind a [setup/login gate](docs/manager-authorization.md). No existing candidate data is migrated. Legacy Native Messaging remains a separate security boundary.
 
 ## What's new
 
@@ -68,7 +68,7 @@ The native-host manifest is generated when you save the first candidate. Keep th
    py -3 manager\app.py
    ```
 
-   The manager prints its local address and opens it in your browser. Leave this terminal open while using the management page. Sign in with the locally initialized owner account. If setup is required, follow the explicit administrative instructions in [owner-security.md](docs/owner-security.md); the web page never creates an account automatically. The manager still chooses a random loopback port.
+   The manager prints `Application Tracker: http://127.0.0.1:8765/` and opens that address in your browser. Leave this terminal open while using the management page. Sign in with the locally initialized owner account. If setup is required, follow the explicit administrative instructions in [owner-security.md](docs/owner-security.md); the web page never creates an account automatically. If port 8765 is occupied or unavailable, startup fails without choosing another port or stopping the existing process. See [manager startup and port conflicts](docs/manager-startup.md).
 3. Select **Add candidate**. Enter a name and the actual extension ID. Paste the candidate's prompt text, or select **Use a .txt or .md file** and choose its path with **Browse**. Enter or browse to a history folder, select **Test folder**, then **Save candidate**.
 4. Saving runs `native-host/register_host.py`. It writes the native-host manifest and registers it for your Windows user. The page reports any registration error.
 5. Select the candidate's **Active** radio button, or check **Set this candidate active after saving**. The active candidate appears at the top of the page.

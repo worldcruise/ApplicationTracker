@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Application Tracker</title>
+  <link rel="stylesheet" href="workspace.css">
+  <script type="module" src="workspace.mjs"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">AT</span><div>Application Tracker<small>Browser workspace</small></div></div>
+    <span id="backend-status" class="connection" role="status">Local backend: Checking</span>
+    <div id="owner-header" class="owner-context" hidden>
+      <span id="candidate-name"></span><small id="owner-name"></small>
+      <button id="sign-out" class="secondary" type="button">Sign Out</button>
+    </div>
+  </header>
+  <main id="extension-workspace" aria-busy="true">
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+    <div id="error" class="notice error" role="alert" hidden></div>
+    <section id="loading" class="gate compact" aria-labelledby="loading-title">
+      <span class="eyebrow">Secure local connection</span><h1 id="loading-title">Checking your browser workspace</h1>
+      <p>Verifying the backend and session before opening protected content.</p>
+    </section>
+    <section id="pairing" class="gate" aria-labelledby="pairing-title" hidden>
+      <span class="eyebrow">First-time connection</span><h1 id="pairing-title">Connect this browser</h1>
+      <p>Approve this Chrome profile in Web Extension Studio, then sign in with the owner account.</p>
+      <div class="identity"><strong>Backend / Workspace Identity</strong><dl><dt>Backend</dt><dd id="backend-id"></dd><dt>Workspace</dt><dd id="workspace-id"></dd></dl></div>
+      <button id="confirm-backend" class="secondary" type="button">Confirm Backend</button>
+      <form id="pairing-form">
+        <label for="browser-label">Browser label</label>
+        <input id="browser-label" name="browserLabel" maxlength="80" placeholder="e.g. Work Chrome profile" autocomplete="off" required>
+        <button id="request-pairing" type="submit" disabled>Request Pairing</button>
+      </form>
+      <details><summary>Already paired?</summary><p>Use the original ordinary Chrome profile. Existing installation credentials are preserved. Review or revoke an invalid installation in Web Extension Studio; this page will not replace it automatically.</p></details>
+    </section>
+    <section id="pending" class="gate" aria-labelledby="pending-title" hidden>
+      <span class="eyebrow">Owner approval</span><h1 id="pending-title">Pairing Requested</h1>
+      <p id="pending-label"></p><div class="approval-code" id="approval-code"></div><p id="pending-expiry"></p>
+      <p>Open Web Extension Studio, verify this browser label and approval code, and assign the correct candidate.</p>
+      <a class="button secondary" href="http://127.0.0.1:8765/extension-studio" target="_blank" rel="noopener noreferrer">Open Web Studio</a>
+      <div class="actions"><button id="claim-pairing" type="button">Claim Approved Pairing</button><button id="cancel-pending" class="text-button" type="button">Cancel Pending Request</button></div>
+      <small>Cancel clears this browser's local pending exchange. It does not cancel a server request.</small>
+    </section>
+    <section id="paired" class="gate compact" aria-labelledby="paired-title" hidden>
+      <span class="eyebrow">Pairing complete</span><h1 id="paired-title">This browser is paired</h1>
+      <p>Owner sign-in is required to open the candidate workspace.</p><button id="continue-login" type="button">Continue to Sign In</button>
+    </section>
+    <section id="login" class="gate" aria-labelledby="login-title" hidden>
+      <span class="eyebrow">Owner authentication</span><h1 id="login-title">Sign In</h1>
+      <p>Stored browser pairing · Owner verification required</p>
+      <form id="login-form">
+        <label for="username">Username</label><input id="username" name="username" autocomplete="username" maxlength="64" required>
+        <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="1024" required>
+        <button id="sign-in" type="submit">Sign In</button><small id="login-retry" role="status"></small>
+      </form>
+      <p class="hint">Candidate assignment is managed in Web Extension Studio. The legacy popup name does not authorize this workspace.</p>
+    </section>
+    <section id="binding-review" class="gate" aria-labelledby="binding-title" hidden>
+      <span class="eyebrow">Assignment changed</span><h1 id="binding-title">Review the assigned candidate</h1>
+      <p id="binding-candidate"></p><p>Owner authentication succeeded. Previous candidate context is locked and will not be restored.</p>
+      <label class="check"><input id="binding-acknowledgement" type="checkbox">I acknowledge this candidate assignment.</label>
+      <div class="actions"><button id="accept-binding" type="button" disabled>Continue with this candidate</button><button id="binding-sign-out" class="secondary" type="button">Sign Out</button></div>
+    </section>
+    <section id="recovery" class="gate" aria-labelledby="recovery-title" hidden>
+      <span class="eyebrow">Workspace locked</span><h1 id="recovery-title">Connection and recovery</h1><p id="recovery-detail"></p>
+      <a class="button secondary" href="http://127.0.0.1:8765/extension-studio" target="_blank" rel="noopener noreferrer">Open Web Studio</a>
+      <div id="pending-recovery" hidden>
+        <label class="check"><input id="recovery-reviewed" type="checkbox">I reviewed Web Studio and revoked any installation from this uncertain exchange.</label>
+        <button id="clear-pending" class="secondary" type="button" disabled>Clear Reviewed Local Exchange</button>
+      </div>
+      <button id="clear-local-request" class="secondary" type="button" hidden>Clear Local Request</button>
+      <button id="finish-cleanup" class="secondary" type="button" hidden>Finish Local Pairing Cleanup</button>
+      <button id="reconnect" type="button">Reconnect</button>
+      <p class="hint">No credential is silently removed or replaced. Do not retry a one-time claim after an uncertain result.</p>
+    </section>
+    <section id="authenticated-shell" hidden>
+      <div class="workspace-heading"><div><span class="eyebrow">Your candidate workspace</span><h1>Ready when you are</h1></div><button id="keep-signed-in" class="secondary" type="button">Keep signed in</button></div>
+      <nav class="tabs" role="tablist" aria-label="Extension workspace">
+        <button id="tab-workspace" role="tab" aria-selected="true" aria-controls="panel-workspace" tabindex="0" type="button">Workspace</button>
+        <button id="tab-settings" role="tab" aria-selected="false" aria-controls="panel-settings" tabindex="-1" type="button">Settings</button>
+      </nav>
+      <section id="panel-workspace" class="editor-grid" role="tabpanel" aria-labelledby="tab-workspace" tabindex="0">
+        <article class="section-card jd-card">
+          <h2>Job Description</h2><p>Original job text, with metadata kept separately.</p>
+          <div class="editor-fields">
+            <label for="job-company">Company</label><input id="job-company" type="text" placeholder="Company from the posting" autocomplete="off" disabled>
+            <label for="job-url">Job URL</label><input id="job-url" type="text" inputmode="url" placeholder="https://example.com/jobs/123" autocomplete="off" disabled>
+            <label for="job-description">Original Job Description</label><textarea id="job-description" rows="18" placeholder="Paste or write the original job description…" aria-describedby="draft-hint" disabled></textarea>
+          </div>
+          <div class="actions"><button id="open-import" class="secondary" type="button" disabled>Import / Review</button><button id="copy-jd" type="button" disabled>Copy JD</button></div>
+          <p id="copy-jd-status" class="copy-feedback" role="status" aria-live="polite"></p>
+          <section id="import-panel" class="import-panel" aria-labelledby="import-title" hidden>
+            <h3 id="import-title">Import / Review</h3><p>Paste hotkey output or plain JD text. Nothing changes until you review and apply.</p>
+            <label for="import-source">Pasted source text</label><textarea id="import-source" rows="6" placeholder="Paste here with Ctrl+V. Clipboard is never read automatically." disabled></textarea>
+            <button id="review-import" class="secondary" type="button" disabled>Review Pasted Text</button>
+            <div id="import-review" hidden>
+              <p id="import-detection" role="status"></p>
+              <label for="review-company">Reviewed Company</label><input id="review-company" type="text" autocomplete="off" disabled>
+              <label for="review-url">Reviewed Job URL</label><input id="review-url" type="text" inputmode="url" autocomplete="off" disabled>
+              <label for="review-jd">Reviewed JD</label><textarea id="review-jd" rows="9" disabled></textarea>
+              <label id="import-overwrite-row" class="check" hidden><input id="import-overwrite" type="checkbox" disabled>I confirm replacing existing JD or metadata with these reviewed values, including blank fields.</label>
+              <p id="import-error" class="inline-error" role="alert" hidden></p>
+              <button id="apply-import" type="button" disabled>Apply Import</button>
+            </div>
+            <button id="cancel-import" class="text-button" type="button" disabled>Cancel</button>
+          </section>
+        </article>
+        <article class="section-card">
+          <h2>CV (JSON)</h2><code class="contract-fields">company · title · summary · skills · experience · education</code>
+          <label for="cv-json">Resume JSON</label><textarea id="cv-json" class="json-editor" rows="13" placeholder="Paste the generated JSON object…" spellcheck="false" aria-describedby="cv-validation cv-errors" disabled></textarea>
+          <p id="cv-validation" class="validation-status" role="status" aria-live="polite">Empty — paste resume JSON to validate.</p>
+          <pre id="cv-errors" class="inline-error" role="alert" hidden></pre>
+          <div class="actions"><button id="validate-cv" class="secondary" type="button" disabled>Validate JSON</button><button id="copy-json" class="secondary" type="button" disabled>Copy JSON</button></div>
+          <p id="copy-json-status" class="copy-feedback" role="status" aria-live="polite"></p>
+        </article>
+        <article class="section-card">
+          <span class="tag">Optional</span><h2>Cover Letter</h2><p>Independent plain text. No CV or job record is required.</p>
+          <label for="cover-letter">Cover letter text</label><textarea id="cover-letter" rows="8" placeholder="Write or paste a cover letter, or leave this blank…" disabled></textarea>
+          <div class="actions"><button id="copy-cover-letter" type="button" disabled>Copy Cover Letter</button></div>
+          <p id="copy-cover-letter-status" class="copy-feedback" role="status" aria-live="polite"></p>
+        </article>
+      </section>
+      <section id="panel-settings" class="settings-grid" role="tabpanel" aria-labelledby="tab-settings" tabindex="0" hidden>
+        <article class="section-card"><span class="tag">D5E</span><h2>Personal Details</h2><p>Candidate settings integration is coming in D5E.</p><div class="empty-state"><small>No profile information is loaded or fabricated in this checkpoint.</small></div></article>
+        <article class="section-card"><span class="tag">D5E</span><h2>Custom Prompts</h2><p>Candidate settings integration is coming in D5E.</p><div class="empty-state"><small>Existing prompt identities, complete text and linked-file behavior will be preserved.</small></div></article>
+      </section>
+      <p id="draft-hint" class="workspace-footnote"><strong>Drafts stay in this page's memory only.</strong> Nothing is automatically saved or copied. Refreshing or closing this page may discard unsaved edits. Pairing and candidate assignments remain in Web Extension Studio.</p>
+    </section>
+  </main>
+  <footer>Local backend · http://127.0.0.1:8765 <span>Ordinary Chrome profile</span></footer>
+</body>
+</html>

@@ -1,6 +1,18 @@
 # UI-C3B: Manager owner authorization and web login
 
 All 20 manager business operations require the existing UI-C2 owner session.
+D5B introduced eight owner-protected pairing/binding HTTP operations through the
+same central guard; see [browser-pairing.md](browser-pairing.md). D5B2 retires its
+two credential-issuance routes with owner-protected 410 responses and adds only
+the three explicit [extension enrollment exceptions](extension-enrollment.md),
+with separate exact-Origin/token/CORS guards. The 20 business operations, owner
+management operations and exact public static-resource allowlist stay protected
+as before. No general API or OPTIONS bypass is introduced.
+Owner credentials now resolve through the shared current-user Windows Known
+Folder storage resolver, outside candidate configuration. Startup/status never
+provision it. See [private-owner-storage.md](private-owner-storage.md) for D2
+permissions, missing-owner states and legacy conflict handling. Authorization,
+Host/Origin/CSRF rules and the public-resource allowlist are unchanged.
 The setup/login screen and protected Studio ship together. No owner is created
 on startup or by a web request. No candidate schema, registry record, native-host
 protocol, extension UI or hotkey is changed by this checkpoint.
@@ -183,6 +195,11 @@ handler tests now use genuine isolated owner sessions rather than a security byp
 
 ## Manual browser verification — NOT TESTED
 
+The UI-C3C-A [browser acceptance procedure](manager-browser-acceptance.md) expands
+this checklist into all 18 requested scenarios, exact fixture commands, expected
+outcomes and current tooling/fixture limitations. The full regression review has
+been rerun; manual results are still required for final browser acceptance/sign-off.
+
 This checkpoint could not exercise Chrome: the computer-use native pipe was
 unavailable (OS error 2), and the browser inventory was empty. DOM tests do not
 prove cookie enforcement, actual cross-tab delivery, visual layout or PDF viewing.
@@ -219,8 +236,10 @@ Do not use the production manager or real profiles for these failure checks.
 
 ## Deferred boundaries
 
-The launcher remains random-port loopback-only. Fixed `127.0.0.1:8765`, extension
-pairing/binding and the two-tab extension workspace are separate checkpoints.
+The production launcher now uses only `127.0.0.1:8765`, with no alternate-port
+fallback; see [manager startup](manager-startup.md). Synthetic fixture servers
+retain ephemeral ports. Extension pairing/binding and the two-tab extension
+workspace remain separate checkpoints.
 HTTP cookies intentionally omit Secure on this approved loopback MVP; cookies are
 not isolated by port and local services/OS remain a trust boundary. See
 [authentication.md](authentication.md). Multi-user candidate grants and remote

@@ -3,11 +3,11 @@ from contextlib import contextmanager
 import base64
 import copy
 from dataclasses import dataclass
+from functools import cached_property
 import datetime as dt
 import hashlib
 import hmac
 import json
-from pathlib import Path
 import re
 import secrets
 import uuid
@@ -15,6 +15,7 @@ import uuid
 from .models import ConfigurationError, RevisionConflict, allowed_fields, require, timestamp, version_one
 from .repositories import JsonRepository, _decode, _encode, _lock
 from .security_files import SecurityPermissions, private_atomic_write
+from .security_location import SecurityLocation, security_artifacts
 
 
 MIN_ITERATIONS = 600_000
@@ -135,45 +136,79 @@ class RecoverySnapshot:
 
 class SecurityRepository:
     """Explicit owner operations; generic record replacement/backup restore is not exposed."""
-    def __init__(self, directory, *, permissions=None):
-        self.directory = Path(directory).absolute()
-        self.path = self.directory / "security.json"
-        self.backup_path = self.directory / "security.json.bak"
+    def __init__(self, directory=None, *, permissions=None, known_folder=None, legacy_directory=...):
+        if legacy_directory is ...:
+            from .security_location import LEGACY_DIRECTORY
+            legacy_directory = LEGACY_DIRECTORY
+        self.location = SecurityLocation(directory, known_folder=known_folder, legacy_directory=legacy_directory)
         self.permissions = permissions or SecurityPermissions()
-        self._record = JsonRepository(self.path, validate_security_record, atomic_writer=self._write)
-        self._backup = JsonRepository(self.backup_path, validate_security_record)
+
+    @property
+    def directory(self):
+        return self.location.directory
+
+    @property
+    def path(self):
+        return self.directory / "security.json"
+
+    @property
+    def backup_path(self):
+        return self.directory / "security.json.bak"
+
+    @cached_property
+    def _record(self):
+        return JsonRepository(self.path, validate_security_record, atomic_writer=self._write)
+
+    @cached_property
+    def _backup(self):
+        return JsonRepository(self.backup_path, validate_security_record)
 
     def _write(self, path, content, *, before_replace=None):
-        private_atomic_write(path, content, permissions=self.permissions, before_replace=before_replace)
+        self.location.inspect(self.permissions)
+
+        def checked_replace():
+            self.location.inspect(self.permissions)
+            if before_replace:
+                before_replace()
+
+        private_atomic_write(path, content, permissions=self.permissions, before_replace=checked_replace)
 
     @contextmanager
     def _guard(self):
-        self.permissions.validate(self.directory, directory=True)
+        self.location.inspect(self.permissions)
         canonical = self.directory.resolve() / "security.json"
         with _lock(canonical), self.permissions.lock(canonical):
-            self.permissions.validate(self.directory, directory=True)
-            for path in (self.path, self.backup_path, *self.directory.glob(".security.json.*")):
+            self.location.inspect(self.permissions)
+            for path in security_artifacts(self.directory):
                 self.permissions.validate(path, missing_ok=True)
             yield
 
     def _pristine(self):
-        if self.path.exists() or self.backup_path.exists() or any(self.directory.glob(".security.json.*")):
+        if security_artifacts(self.directory):
             raise ConfigurationError("Security storage already exists or has recovery artifacts. Initialization will not replace it; use explicit reset/recovery.")
 
     def ensure_uninitialized(self):
+        if self.location.inspect(self.permissions, missing_ok=True):
+            return
         with self._guard():
             self._pristine()
 
     def read(self):
         with self._guard():
+            if not self.path.exists() and security_artifacts(self.directory):
+                raise ConfigurationError("Owner primary is missing but recovery artifacts exist. Use explicit administrative recovery; setup will not replace them.")
             return self._record.read(missing_ok=False)
 
     def initialize(self, username, password):
+        self.ensure_uninitialized()
+        username = normalize_username(username)
+        verifier = create_password_verifier(password)
+        self.location.provision(self.permissions)
         with self._guard():
             self._pristine()
             now = _now()
-            owner = {"id": uuid.uuid4().hex, "username": normalize_username(username), "role": "owner",
-                     "passwordVerifier": create_password_verifier(password), "authGeneration": 1,
+            owner = {"id": uuid.uuid4().hex, "username": username, "role": "owner",
+                     "passwordVerifier": verifier, "authGeneration": 1,
                      "disabled": False, "createdAt": now, "passwordChangedAt": now}
             data = {"schemaVersion": 1, "backendId": uuid.uuid4().hex, "authEpoch": uuid.uuid4().hex, "users": [owner]}
             return self._record.save(data, expected_revision=None)
@@ -234,3 +269,8 @@ class SecurityRepository:
             # The validated backup remains untouched. Retained malformed bytes are
             # forensic evidence only, never silently consumed as configuration.
             return self._record.read(missing_ok=False)
+
+
+def owner_repository(directory=None, *, known_folder=None, legacy_directory=...):
+    """Shared production factory. Explicit test repositories can supply isolated roots."""
+    return SecurityRepository(directory, known_folder=known_folder, legacy_directory=legacy_directory)

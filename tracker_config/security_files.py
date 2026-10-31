@@ -26,6 +26,7 @@ class _WindowsAccess:
             (self.kernel.CloseHandle, [w.HANDLE], w.BOOL),
             (self.kernel.LocalFree, [c.c_void_p], c.c_void_p),
             (self.kernel.CreateMutexW, [c.c_void_p, w.BOOL, w.LPCWSTR], w.HANDLE),
+            (self.kernel.CreateDirectoryW, [w.LPCWSTR, c.c_void_p], w.BOOL),
             (self.kernel.WaitForSingleObject, [w.HANDLE, w.DWORD], w.DWORD),
             (self.kernel.ReleaseMutex, [w.HANDLE], w.BOOL),
             (self.advapi.OpenProcessToken, [w.HANDLE, w.DWORD, c.POINTER(w.HANDLE)], w.BOOL),
@@ -35,6 +36,7 @@ class _WindowsAccess:
             (self.advapi.GetAce, [c.c_void_p, w.DWORD, pointer], w.BOOL),
             (self.advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW, [w.LPCWSTR, w.DWORD, pointer, c.POINTER(w.DWORD)], w.BOOL),
             (self.advapi.GetSecurityDescriptorDacl, [c.c_void_p, c.POINTER(w.BOOL), pointer, c.POINTER(w.BOOL)], w.BOOL),
+            (self.advapi.GetSecurityDescriptorControl, [c.c_void_p, c.POINTER(w.WORD), c.POINTER(w.DWORD)], w.BOOL),
             (self.advapi.SetNamedSecurityInfoW, [w.LPWSTR, c.c_int, w.DWORD, c.c_void_p, c.c_void_p, c.c_void_p, c.c_void_p], w.DWORD),
         ]
         for function, arguments, result in signatures:
@@ -64,7 +66,7 @@ class _WindowsAccess:
         finally:
             self.kernel.LocalFree(result)
 
-    def validate(self, path, *, directory=False):
+    def validate(self, path, *, directory=False, private=False, require_create=False):
         c, w = self.c, self.w
         owner, dacl, descriptor = c.c_void_p(), c.c_void_p(), c.c_void_p()
         error = self.advapi.GetNamedSecurityInfoW(str(path), 1, 0x00000005,
@@ -74,6 +76,12 @@ class _WindowsAccess:
         try:
             if not owner.value or self._sid_text(owner) not in self.trusted_sids or not dacl.value:
                 raise PermissionError("Security storage requires a trusted owner and an explicit restrictive DACL.")
+            if private:
+                control, revision = w.WORD(), w.DWORD()
+                self._require(self.advapi.GetSecurityDescriptorControl(descriptor, c.byref(control), c.byref(revision)))
+                if not control.value & 0x1000:
+                    raise PermissionError("Private owner directories require a protected DACL without inherited access.")
+            user_access = 0
             # ACL header: BYTE revision, BYTE reserved, WORD size, WORD ACE count.
             ace_count = c.c_ushort.from_address(dacl.value + 4).value
             for index in range(ace_count):
@@ -81,16 +89,42 @@ class _WindowsAccess:
                 self._require(self.advapi.GetAce(dacl, index, c.byref(ace)))
                 kind = c.c_ubyte.from_address(ace.value).value
                 flags = c.c_ubyte.from_address(ace.value + 1).value
-                if flags & 0x08 or kind == 1:  # Inherit-only or access-denied ACE.
+                if flags & 0x08:
+                    continue
+                if kind == 1:
+                    if private or require_create:
+                        raise PermissionError("Private owner access requires explicit review of deny ACL entries.")
                     continue
                 if kind != 0:
                     raise PermissionError("Security storage has an unsupported DACL entry; review its permissions explicitly.")
                 mask = w.DWORD.from_address(ace.value + 4).value
                 sid = self._sid_text(c.c_void_p(ace.value + 8))
+                if sid == self.user_sid:
+                    user_access |= mask
                 # A parent may be readable, but not writable/deletable by others.
-                dangerous = mask & 0x500D0156 if directory else mask
+                dangerous = mask & 0x500D0156 if directory and not private else mask
                 if dangerous and sid not in self.trusted_sids:
                     raise PermissionError("Security storage grants unsafe access to another Windows principal.")
+            # Conservative: do not infer create access from group membership or deny ACEs.
+            if (private and user_access & 0x001F01FF != 0x001F01FF
+                    or require_create and not user_access & (0x0004 | 0x10000000 | 0x40000000)):
+                raise PermissionError("The current Windows user lacks explicit owner-storage access.")
+        finally:
+            self.kernel.LocalFree(descriptor)
+
+    def create_private_directory(self, path):
+        c, w = self.c, self.w
+
+        class SECURITY_ATTRIBUTES(c.Structure):
+            _fields_ = [("length", w.DWORD), ("descriptor", c.c_void_p), ("inherit", w.BOOL)]
+
+        descriptor = c.c_void_p()
+        sddl = f"D:P(A;OICI;FA;;;{self.user_sid})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+        self._require(self.advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, 1, c.byref(descriptor), None))
+        try:
+            attributes = SECURITY_ATTRIBUTES(c.sizeof(SECURITY_ATTRIBUTES), descriptor, False)
+            if not self.kernel.CreateDirectoryW(str(path), c.byref(attributes)) and c.get_last_error() != 183:
+                raise PermissionError("Private owner directory creation failed (error %d)." % c.get_last_error())
         finally:
             self.kernel.LocalFree(descriptor)
 
@@ -131,7 +165,7 @@ class SecurityPermissions:
     def windows(self):
         return _WindowsAccess()
 
-    def validate(self, path: Path, *, directory=False, missing_ok=False):
+    def validate(self, path: Path, *, directory=False, missing_ok=False, private=False):
         try:
             info = path.lstat()
         except FileNotFoundError:
@@ -146,13 +180,32 @@ class SecurityPermissions:
         elif not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
             raise PermissionError("Security records must be regular files without hard links.")
         if os.name == "nt":
-            self.windows.validate(path, directory=directory)
+            self.windows.validate(path, directory=directory, private=private)
         elif os.name == "posix":
             mode = stat.S_IMODE(info.st_mode)
-            if info.st_uid not in (os.getuid(), 0) or (mode & 0o022 if directory else mode != 0o600):
+            if info.st_uid not in (os.getuid(), 0) or (mode != 0o700 if private else mode & 0o022 if directory else mode != 0o600):
                 raise PermissionError("Security storage requires trusted ownership, a non-shared-writable directory and mode 0600 files.")
         else:
             raise PermissionError("Owner storage permissions are unsupported on this platform.")
+
+    def require_create(self, path):
+        self.validate(path, directory=True)
+        if os.name == "nt":
+            self.windows.validate(path, directory=True, require_create=True)
+        elif not os.access(path, os.W_OK | os.X_OK):
+            raise PermissionError("The current user cannot provision private owner storage.")
+
+    def create_private_directory(self, path):
+        if os.name == "nt":
+            self.windows.create_private_directory(path)
+        elif os.name == "posix":
+            try:
+                os.mkdir(path, 0o700)
+            except FileExistsError:
+                pass
+        else:
+            raise PermissionError("Private owner directories are unsupported on this platform.")
+        self.validate(path, directory=True, private=True)
 
     def make_private(self, path):
         if os.name == "nt":

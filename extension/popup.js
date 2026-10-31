@@ -34,3 +34,18 @@ form.addEventListener("submit", async (event) => {
 });
 
 loadCandidateName();
+
+document.getElementById("open-workspace").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  const message = document.getElementById("launcher-status");
+  button.disabled = true;
+  message.textContent = "Opening workspace…";
+  try {
+    const { openWorkspace } = await import("./studio/launcher.mjs");
+    await openWorkspace();
+    message.textContent = "Workspace opened.";
+  } catch {
+    message.textContent = "Could not open the workspace. Use an ordinary Chrome profile, check the extension, and try again.";
+    message.className = "error";
+  } finally { button.disabled = false; }
+});
